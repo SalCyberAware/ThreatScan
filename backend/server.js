@@ -79,11 +79,116 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", engines: status, uptime: process.uptime(), cacheSize: cache.size });
 });
 
-app.get("/api/cache/clear", (req, res) => {
-  cache.clear();
-  res.json({ status: "ok", message: "Cache cleared" });
+// ── SSE Streaming Scan Endpoint ───────────────────────────────────────────────
+app.get("/api/scan/stream", async (req, res) => {
+  const { query, type: userType } = req.query;
+
+  if (!query || query.trim().length === 0) {
+    return res.status(400).json({ error: "query is required" });
+  }
+
+  const q    = query.trim().toLowerCase();
+  const type = userType || detectType(q);
+
+  if (type === "unknown") {
+    return res.status(400).json({ error: "Could not detect input type." });
+  }
+
+  // SSE headers
+  res.setHeader("Content-Type",  "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection",    "keep-alive");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.flushHeaders();
+
+  const send = (event, data) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  // Check cache
+  const cacheKey = `${type}:${q}`;
+  const cached   = getCached(cacheKey);
+  if (cached) {
+    // Stream cached results instantly
+    send("start", { query: q, type, total: cached.engines.length, cached: true });
+    for (const engine of cached.engines) {
+      send("engine", engine);
+    }
+    send("done", {
+      verdict:   cached.verdict,
+      score:     cached.score,
+      malicious: cached.malicious,
+      suspicious:cached.suspicious,
+      clean:     cached.clean,
+      cached:    true,
+      scannedAt: cached.scannedAt,
+    });
+    return res.end();
+  }
+
+  const methodMap = { url:"scanUrl", ip:"scanIp", hash:"scanHash", domain:"scanDomain" };
+  const method    = methodMap[type];
+  const engineList = Object.entries(engines);
+
+  send("start", { query: q, type, total: engineList.length, cached: false });
+
+  const allResults = [];
+
+  // Fire all engines concurrently — stream each result as it arrives
+  await Promise.allSettled(
+    engineList.map(async ([id, engine]) => {
+      const keyName = ENGINE_KEYS[id];
+      if (keyName && !process.env[keyName]) {
+        const r = { id, verdict:"skipped", detail:`No API key set for ${id}` };
+        allResults.push(r);
+        send("engine", r);
+        return;
+      }
+      const timeout = ENGINE_TIMEOUTS[id] || 10000;
+      try {
+        const result = await Promise.race([
+          engine[method](q),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`${id} timeout`)), timeout))
+        ]);
+        const r = { id, ...result };
+        allResults.push(r);
+        send("engine", r);
+      } catch (err) {
+        const r = { id, verdict:"error", detail: err.message };
+        allResults.push(r);
+        send("engine", r);
+      }
+    })
+  );
+
+  // Aggregate final verdict
+  const active      = allResults.filter(r => !["skipped","error","info"].includes(r.verdict));
+  const malCount    = active.filter(r => r.verdict === "malicious").length;
+  const suspCount   = active.filter(r => r.verdict === "suspicious").length;
+  const totalActive = active.length || 1;
+  const score       = Math.min(100, Math.round(
+    (malCount / totalActive) * 100 + (suspCount / totalActive) * 30));
+  const finalVerdict = score >= 50 ? "malicious" : score >= 20 ? "suspicious" : "clean";
+
+  const summary = {
+    verdict:    finalVerdict,
+    score,
+    malicious:  malCount,
+    suspicious: suspCount,
+    clean:      active.filter(r => r.verdict === "clean").length,
+    cached:     false,
+    scannedAt:  new Date().toISOString(),
+  };
+
+  // Cache it
+  setCache(cacheKey, { query: q, type, engines: allResults, ...summary });
+
+  send("done", summary);
+  res.end();
 });
 
+// ── Legacy JSON endpoint (kept for compatibility) ─────────────────────────────
 app.post("/api/scan", async (req, res) => {
   const { query, type: userType } = req.body;
   if (!query || typeof query !== "string" || query.trim().length === 0)
