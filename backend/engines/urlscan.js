@@ -24,10 +24,17 @@ async function scanUrl(url) {
       };
     } catch { /* not ready yet, keep polling */ }
   }
-  return { verdict: "unknown", detail: "Scan timeout" };
+  return { verdict: "info", detail: "urlscan timeout" };
 }
 
-async function scanDomain(domain) { return scanUrl(`https://${domain}`); }
+async function scanDomain(domain) {
+  // ── FIX: strip any existing protocol before prepending https:// ────────────
+  // When a full URL like "https://google.com" is passed to scanDomain,
+  // prepending "https://" produced "https://https://google.com" → 400 error.
+  const clean = domain.replace(/^https?:\/\//i, "");
+  return scanUrl(`https://${clean}`);
+}
+
 async function scanIp()   { return { verdict: "info", detail: "URL/domain engine" }; }
 async function scanHash() { return { verdict: "info", detail: "URL/domain engine" }; }
 
