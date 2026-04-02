@@ -3,7 +3,9 @@ const BASE = "https://urlscan.io/api/v1";
 const KEY  = () => process.env.URLSCAN_KEY;
 
 async function scanUrl(url) {
-  const submit = await axios.post(`${BASE}/scan/`, { url, visibility: "public" }, {
+  // SECURITY FIX: changed "public" to "unlisted" — scanned URLs are no longer
+  // visible to anyone on urlscan.io. Only people with the direct link can see it.
+  const submit = await axios.post(`${BASE}/scan/`, { url, visibility: "unlisted" }, {
     headers: { "API-Key": KEY(), "Content-Type": "application/json" }
   });
   const resultUrl = submit.data.api;
@@ -28,9 +30,6 @@ async function scanUrl(url) {
 }
 
 async function scanDomain(domain) {
-  // ── FIX: strip any existing protocol before prepending https:// ────────────
-  // When a full URL like "https://google.com" is passed to scanDomain,
-  // prepending "https://" produced "https://https://google.com" → 400 error.
   const clean = domain.replace(/^https?:\/\//i, "");
   return scanUrl(`https://${clean}`);
 }
