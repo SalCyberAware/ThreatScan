@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 const Styles = () => (
   <style>{`
@@ -14,18 +14,19 @@ const Styles = () => (
     body { background:var(--bg); color:var(--text); font-family:var(--sans); }
     @keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:.4} }
     @keyframes fadeUp  { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
-    @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
     @keyframes spin    { to{transform:rotate(360deg)} }
-    @keyframes countUp { from{opacity:0;transform:scale(.8)} to{opacity:1;transform:scale(1)} }
     @keyframes slideIn { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
     @keyframes borderGlow {
       0%,100%{border-color:var(--border2);box-shadow:none}
       50%{border-color:var(--green);box-shadow:0 0 12px rgba(0,255,136,.15)}
     }
+    @keyframes dropPulse {
+      0%,100%{border-color:#00ff8860;box-shadow:0 0 0 0 rgba(0,255,136,0)}
+      50%{border-color:var(--green);box-shadow:0 0 20px rgba(0,255,136,.2)}
+    }
     input:focus { outline:none; }
     button:focus-visible { outline:2px solid var(--green); outline-offset:2px; }
 
-    /* ── Mobile fixes ─────────────────────────────────────────────────────── */
     .ts-header-inner {
       max-width:1200px; margin:0 auto; height:60px;
       display:flex; align-items:center; justify-content:space-between;
@@ -33,17 +34,14 @@ const Styles = () => (
     }
     .ts-nav { display:flex; gap:4px; }
     .ts-nav button { padding:6px 10px; font-size:10px; }
-
     .ts-main { max-width:1200px; margin:0 auto; padding:32px 24px; position:relative; z-index:1; }
-
     .ts-search-bar {
       display:flex; border:1px solid var(--border2); border-radius:10px;
       overflow:hidden; background:var(--surface);
     }
     .ts-search-bar input {
       flex:1; background:none; border:none; padding:16px;
-      color:var(--text); font-size:14px; font-family:var(--mono);
-      min-width:0;
+      color:var(--text); font-size:14px; font-family:var(--mono); min-width:0;
     }
     .ts-scan-btn {
       background:var(--green); color:#000; border:none;
@@ -53,27 +51,35 @@ const Styles = () => (
       white-space:nowrap; flex-shrink:0; transition:all .2s;
     }
     .ts-scan-btn:disabled { background:var(--surface2); color:var(--text3); cursor:not-allowed; }
-
     .ts-summary-inner {
       display:flex; flex-wrap:wrap; gap:24px;
       align-items:center; justify-content:space-between;
     }
-
     .ts-counts { display:flex; gap:20px; }
-
     .ts-engine-grid {
       display:grid;
       grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
       gap:12px;
     }
-
     .ts-history-item {
       display:flex; align-items:center;
       justify-content:space-between; flex-wrap:wrap; gap:8px;
     }
     .ts-history-meta { display:flex; gap:14px; align-items:center; }
 
-    /* ── Tablet (max 768px) ───────────────────────────────────────────────── */
+    /* Drop zone */
+    .ts-dropzone {
+      border:2px dashed var(--border2); border-radius:10px;
+      padding:28px; text-align:center; cursor:pointer;
+      transition:all .2s; background:var(--surface);
+      margin-bottom:12px;
+    }
+    .ts-dropzone:hover, .ts-dropzone.drag-over {
+      animation:dropPulse 1.5s ease-in-out infinite;
+      background:#00ff8808;
+    }
+    .ts-dropzone.drag-over { border-color:var(--green); }
+
     @media (max-width:768px) {
       .ts-header-inner { padding:0 16px; height:52px; }
       .ts-logo-sub { display:none; }
@@ -82,21 +88,14 @@ const Styles = () => (
       .ts-summary-inner { gap:16px; justify-content:center; text-align:center; }
       .ts-counts { justify-content:center; }
     }
-
-    /* ── Mobile (max 480px) ───────────────────────────────────────────────── */
     @media (max-width:480px) {
       .ts-header-inner { height:48px; }
       .ts-nav button { padding:4px 8px; font-size:9px; }
       .ts-search-bar { flex-direction:column; border-radius:10px; }
       .ts-search-bar input { padding:14px 16px; border-bottom:1px solid var(--border2); }
-      .ts-scan-btn {
-        width:100%; justify-content:center;
-        padding:14px; border-radius:0 0 10px 10px;
-      }
+      .ts-scan-btn { width:100%; justify-content:center; padding:14px; border-radius:0 0 10px 10px; }
       .ts-main { padding:16px 12px; }
       .ts-counts { gap:12px; }
-      .ts-counts > div > div:first-child { font-size:24px !important; }
-      .ts-history-meta { gap:8px; }
       .ts-history-item { flex-direction:column; align-items:flex-start; }
     }
   `}</style>
@@ -116,7 +115,6 @@ const ENGINE_META = {
   safebrowsing:  { name:"Google SafeBrowse", icon:"🔒" },
   threatfox:     { name:"ThreatFox",         icon:"🦊" },
 };
-
 const ENGINE_ORDER = Object.keys(ENGINE_META);
 
 const TYPES = [
@@ -144,6 +142,16 @@ function detectInputType(q) {
   return "auto";
 }
 
+// ── SHA256 file hashing in the browser (no upload, no server) ────────────────
+async function hashFile(file) {
+  const buffer = await file.arrayBuffer();
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  return Array.from(new Uint8Array(digest))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 const Badge = ({ verdict, size="sm" }) => {
   const MAP = {
     malicious:  { bg:"#ff335515", border:"#ff3355", text:"#ff3355", label:"MALICIOUS"  },
@@ -158,10 +166,8 @@ const Badge = ({ verdict, size="sm" }) => {
   return (
     <span style={{ background:c.bg, border:`1px solid ${c.border}`, color:c.text,
       padding: size==="lg" ? "6px 14px":"3px 8px",
-      fontSize: size==="lg" ? 13:10,
-      borderRadius:4, fontFamily:"var(--mono)", fontWeight:700,
-      letterSpacing:1, display:"inline-flex", alignItems:"center", gap:5
-    }}>
+      fontSize: size==="lg" ? 13:10, borderRadius:4, fontFamily:"var(--mono)",
+      fontWeight:700, letterSpacing:1, display:"inline-flex", alignItems:"center", gap:5 }}>
       {verdict==="scanning" && (
         <span style={{ width:7, height:7, borderRadius:"50%", background:c.text,
           animation:"pulse 1s infinite", flexShrink:0 }}/>
@@ -187,8 +193,8 @@ const ThreatGauge = ({ score }) => {
       <svg width="140" height="80" viewBox="0 0 160 90">
         <defs>
           <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%"   stopColor="#00ff88"/>
-            <stop offset="50%"  stopColor="#ffd700"/>
+            <stop offset="0%" stopColor="#00ff88"/>
+            <stop offset="50%" stopColor="#ffd700"/>
             <stop offset="100%" stopColor="#ff3355"/>
           </linearGradient>
         </defs>
@@ -197,8 +203,7 @@ const ThreatGauge = ({ score }) => {
           strokeWidth="14" strokeLinecap="round"
           strokeDasharray={`${(score/100)*188} 188`}
           style={{ transition:"stroke-dasharray .6s ease" }}/>
-        <g transform={`rotate(${-90+(score/100)*180},80,80)`}
-          style={{ transition:"transform .6s ease" }}>
+        <g transform={`rotate(${-90+(score/100)*180},80,80)`} style={{ transition:"transform .6s ease" }}>
           <line x1="80" y1="80" x2="80" y2="28" stroke={color} strokeWidth="2.5" strokeLinecap="round"/>
           <circle cx="80" cy="80" r="5" fill={color}/>
         </g>
@@ -211,7 +216,7 @@ const ThreatGauge = ({ score }) => {
 };
 
 const EngineCard = ({ engineId, data, status }) => {
-  const meta = ENGINE_META[engineId] || { name: engineId, icon:"🔧" };
+  const meta = ENGINE_META[engineId] || { name:engineId, icon:"🔧" };
   const isScanning = status === "scanning";
   const borderColor = isScanning ? "#9b72ff40"
     : data?.verdict==="malicious"  ? "#ff3355"
@@ -219,13 +224,10 @@ const EngineCard = ({ engineId, data, status }) => {
     : data?.verdict==="clean"      ? "#00ff8840"
     : "#1a2035";
   return (
-    <div style={{
-      background:"var(--surface2)", border:`1px solid ${borderColor}`,
-      borderRadius:8, padding:"14px 16px",
-      transition:"border-color .4s, box-shadow .4s",
+    <div style={{ background:"var(--surface2)", border:`1px solid ${borderColor}`,
+      borderRadius:8, padding:"14px 16px", transition:"border-color .4s, box-shadow .4s",
       animation:"slideIn .25s ease both",
-      boxShadow: data?.verdict==="malicious" ? "0 0 16px rgba(255,51,85,.07)" : "none",
-    }}>
+      boxShadow: data?.verdict==="malicious" ? "0 0 16px rgba(255,51,85,.07)":"none" }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span style={{ fontSize:18 }}>{meta.icon}</span>
@@ -236,19 +238,19 @@ const EngineCard = ({ engineId, data, status }) => {
       {!isScanning && data && (
         <div style={{ fontSize:11, color:"var(--text2)", fontFamily:"var(--mono)",
           display:"flex", flexWrap:"wrap", gap:"5px 14px", marginTop:4 }}>
-          {data.engines     !== undefined && <span>Engines: <b style={{color:"var(--text)"}}>{data.flagged}/{data.engines}</b></span>}
-          {data.confidence  !== undefined && <span>Confidence: <b style={{color:"var(--text)"}}>{data.confidence}%</b></span>}
-          {data.reports     !== undefined && <span>Reports: <b style={{color:"var(--text)"}}>{data.reports}</b></span>}
-          {data.pulses      !== undefined && <span>Pulses: <b style={{color:"var(--text)"}}>{data.pulses}</b></span>}
-          {data.type        && <span>Type: <b style={{color:"#ff3355"}}>{data.type}</b></span>}
-          {data.malware     && <span>Malware: <b style={{color:"#ff3355"}}>{data.malware}</b></span>}
-          {data.org         && <span>Org: <b style={{color:"var(--text)"}}>{data.org}</b></span>}
-          {data.city        && <span>Location: <b style={{color:"var(--text)"}}>{data.city}, {data.country}</b></span>}
+          {data.engines    !== undefined && <span>Engines: <b style={{color:"var(--text)"}}>{data.flagged}/{data.engines}</b></span>}
+          {data.confidence !== undefined && <span>Confidence: <b style={{color:"var(--text)"}}>{data.confidence}%</b></span>}
+          {data.reports    !== undefined && <span>Reports: <b style={{color:"var(--text)"}}>{data.reports}</b></span>}
+          {data.pulses     !== undefined && <span>Pulses: <b style={{color:"var(--text)"}}>{data.pulses}</b></span>}
+          {data.type       && <span>Type: <b style={{color:"#ff3355"}}>{data.type}</b></span>}
+          {data.malware    && <span>Malware: <b style={{color:"#ff3355"}}>{data.malware}</b></span>}
+          {data.org        && <span>Org: <b style={{color:"var(--text)"}}>{data.org}</b></span>}
+          {data.city       && <span>Location: <b style={{color:"var(--text)"}}>{data.city}, {data.country}</b></span>}
           {data.classification && <span>Class: <b style={{color:"var(--text)"}}>{data.classification}</b></span>}
-          {data.detail      && <span style={{color:"var(--text3)"}}>{data.detail}</span>}
-          {data.tags?.length    > 0 && <span>Tags: <b style={{color:"#ff3355"}}>{data.tags.join(", ")}</b></span>}
-          {data.threats?.length > 0 && <span>Threats: <b style={{color:"#ff3355"}}>{data.threats.join(", ")}</b></span>}
-          {data.brands?.length  > 0 && <span>Brands: <b style={{color:"#ffd700"}}>{data.brands.join(", ")}</b></span>}
+          {data.detail     && <span style={{color:"var(--text3)"}}>{data.detail}</span>}
+          {data.tags?.length     > 0 && <span>Tags: <b style={{color:"#ff3355"}}>{data.tags.join(", ")}</b></span>}
+          {data.threats?.length  > 0 && <span>Threats: <b style={{color:"#ff3355"}}>{data.threats.join(", ")}</b></span>}
+          {data.brands?.length   > 0 && <span>Brands: <b style={{color:"#ffd700"}}>{data.brands.join(", ")}</b></span>}
           {data.indicators?.length > 0 && <span>IOCs: <b style={{color:"#ff3355"}}>{data.indicators.join(", ")}</b></span>}
         </div>
       )}
@@ -266,19 +268,54 @@ export default function App() {
   const [summary,      setSummary]      = useState(null);
   const [total,        setTotal]        = useState(10);
   const [error,        setError]        = useState(null);
+  const [dragOver,     setDragOver]     = useState(false);
+  const [fileInfo,     setFileInfo]     = useState(null);   // { name, size, hash }
+  const [hashing,      setHashing]      = useState(false);
   const [history,      setHistory]      = useState(() => {
     try { return JSON.parse(localStorage.getItem("ts_history") || "[]"); } catch { return []; }
   });
   const [tab, setTab] = useState("scan");
-  const inputRef = useRef();
-  const esSrc    = useRef(null);
+  const inputRef  = useRef();
+  const fileRef   = useRef();
+  const esSrc     = useRef(null);
 
   useEffect(() => {
     setDetectedType(detectInputType(query));
     setManualType(null);
+    setFileInfo(null); // clear file info when query changes manually
   }, [query]);
 
   const activeType = manualType || detectedType;
+
+  // ── File processing ────────────────────────────────────────────────────────
+  const processFile = useCallback(async (file) => {
+    if (!file) return;
+    setHashing(true);
+    setError(null);
+    try {
+      const hash = await hashFile(file);
+      const size = (file.size / 1024).toFixed(1);
+      setFileInfo({ name: file.name, size, hash });
+      setQuery(hash);
+      setManualType("hash");
+    } catch {
+      setError("Could not hash file — try a different file.");
+    } finally {
+      setHashing(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) processFile(file);
+  }, [processFile]);
+
+  const handleDragOver = (e) => { e.preventDefault(); setDragOver(true); };
+  const handleDragLeave = () => setDragOver(false);
+  const handleFileInput = (e) => { const f = e.target.files[0]; if (f) processFile(f); };
+  // ──────────────────────────────────────────────────────────────────────────
 
   const handleScan = () => {
     if (!query.trim() || scanning) return;
@@ -300,40 +337,34 @@ export default function App() {
     const es = new EventSource(`${BACKEND}/scan/stream?${params}`);
     esSrc.current = es;
 
-    es.addEventListener("start", (e) => {
-      const data = JSON.parse(e.data);
-      setTotal(data.total || 10);
-    });
+    es.addEventListener("start", (e) => { const d = JSON.parse(e.data); setTotal(d.total || 10); });
     es.addEventListener("engine", (e) => {
-      const data = JSON.parse(e.data);
-      setEngineData(prev => ({ ...prev, [data.id]: data }));
-      setEngineStatus(prev => ({ ...prev, [data.id]: "done" }));
+      const d = JSON.parse(e.data);
+      setEngineData(prev => ({ ...prev, [d.id]: d }));
+      setEngineStatus(prev => ({ ...prev, [d.id]: "done" }));
     });
     es.addEventListener("done", (e) => {
-      const data = JSON.parse(e.data);
-      setSummary(data);
+      const d = JSON.parse(e.data);
+      setSummary(d);
       setScanning(false);
       es.close();
+      const label = fileInfo ? fileInfo.name : query.trim();
       const newHistory = [
-        { query: query.trim(), type: resolvedType, verdict: data.verdict,
-          score: data.score, time: new Date().toLocaleTimeString() },
+        { query: query.trim(), label, type: resolvedType,
+          verdict: d.verdict, score: d.score, time: new Date().toLocaleTimeString() },
         ...history.slice(0, 19)
       ];
       setHistory(newHistory);
       try { localStorage.setItem("ts_history", JSON.stringify(newHistory)); } catch {}
     });
-    es.onerror = () => {
-      setError("Connection error — please try again.");
-      setScanning(false);
-      es.close();
-    };
+    es.onerror = () => { setError("Connection error — please try again."); setScanning(false); es.close(); };
   };
 
-  const doneCount  = Object.values(engineStatus).filter(s => s === "done").length;
+  const doneCount   = Object.values(engineStatus).filter(s => s === "done").length;
   const progressPct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
-  const malCount   = Object.values(engineData).filter(r => r.verdict === "malicious").length;
-  const suspCount  = Object.values(engineData).filter(r => r.verdict === "suspicious").length;
-  const cleanCount = Object.values(engineData).filter(r => r.verdict === "clean").length;
+  const malCount    = Object.values(engineData).filter(r => r.verdict === "malicious").length;
+  const suspCount   = Object.values(engineData).filter(r => r.verdict === "suspicious").length;
+  const cleanCount  = Object.values(engineData).filter(r => r.verdict === "clean").length;
 
   return (
     <>
@@ -366,9 +397,8 @@ export default function App() {
                   background: tab===t ? "var(--surface2)":"none",
                   border:`1px solid ${tab===t?"var(--border2)":"transparent"}`,
                   color: tab===t ? "var(--green)":"var(--text2)",
-                  borderRadius:6, cursor:"pointer",
-                  fontFamily:"var(--mono)", letterSpacing:1,
-                  textTransform:"uppercase", transition:"all .2s"
+                  borderRadius:6, cursor:"pointer", fontFamily:"var(--mono)",
+                  letterSpacing:1, textTransform:"uppercase", transition:"all .2s"
                 }}>{t}</button>
               ))}
             </nav>
@@ -376,7 +406,6 @@ export default function App() {
         </header>
 
         <main className="ts-main">
-
           {tab === "scan" && <>
             <div style={{ textAlign:"center", marginBottom:32 }}>
               <h1 style={{ fontFamily:"var(--mono)", fontSize:"clamp(20px,4vw,40px)",
@@ -399,7 +428,7 @@ export default function App() {
                   <button key={t.id} onClick={() => setManualType(t.id === "auto" ? null : t.id)} style={{
                     background: isActive ? "var(--green)":"var(--surface2)",
                     color:      isActive ? "#000":"var(--text2)",
-                    border:`1px solid ${isActive ? "var(--green)" : "var(--border2)"}`,
+                    border:`1px solid ${isActive ? "var(--green)":"var(--border2)"}`,
                     padding:"5px 12px", borderRadius:6, cursor:"pointer",
                     fontFamily:"var(--mono)", fontSize:10, letterSpacing:1,
                     fontWeight:isActive?700:400, transition:"all .15s",
@@ -409,21 +438,57 @@ export default function App() {
             </div>
 
             {/* Search bar */}
-            <div style={{ marginBottom:16 }}>
+            <div style={{ marginBottom:8 }}>
               <div className="ts-search-bar" style={{
                 animation: scanning ? "borderGlow 2s ease-in-out infinite":"none"
               }}>
                 <input ref={inputRef} value={query}
-                  onChange={e => { setQuery(e.target.value); }}
+                  onChange={e => setQuery(e.target.value)}
                   onKeyDown={e => e.key==="Enter" && handleScan()}
                   placeholder={TYPES.find(t => t.id === activeType)?.placeholder || TYPES[0].placeholder}
                 />
-                <button className="ts-scan-btn" onClick={handleScan}
-                  disabled={!query.trim()||scanning}>
+                <button className="ts-scan-btn" onClick={handleScan} disabled={!query.trim()||scanning}>
                   {scanning ? <><Spinner color="#666" size={16}/> SCANNING…</> : "⚔ SCAN NOW"}
                 </button>
               </div>
             </div>
+
+            {/* ── File upload drop zone ──────────────────────────────────────── */}
+            <div
+              className={`ts-dropzone${dragOver ? " drag-over":""}`}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onClick={() => fileRef.current?.click()}
+              style={{ marginBottom:16 }}
+            >
+              <input ref={fileRef} type="file" style={{ display:"none" }} onChange={handleFileInput}/>
+              {hashing ? (
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10,
+                  fontFamily:"var(--mono)", fontSize:12, color:"var(--green)" }}>
+                  <Spinner size={16}/> HASHING FILE…
+                </div>
+              ) : fileInfo ? (
+                <div style={{ fontFamily:"var(--mono)", fontSize:11 }}>
+                  <div style={{ color:"var(--green)", marginBottom:4 }}>📄 {fileInfo.name} ({fileInfo.size} KB)</div>
+                  <div style={{ color:"var(--text3)", wordBreak:"break-all" }}>SHA256: {fileInfo.hash}</div>
+                  <div style={{ color:"var(--text3)", marginTop:6, fontSize:10 }}>
+                    Click or drop another file to replace
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ fontSize:28, marginBottom:8 }}>📁</div>
+                  <div style={{ fontFamily:"var(--mono)", fontSize:12, color:"var(--text2)", marginBottom:4 }}>
+                    DROP A FILE TO SCAN
+                  </div>
+                  <div style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--text3)" }}>
+                    File is hashed locally (SHA256) — never uploaded to any server
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* ──────────────────────────────────────────────────────────────── */}
 
             {/* Progress bar */}
             {(scanning || summary) && (
@@ -434,12 +499,10 @@ export default function App() {
                   <span>{progressPct}%</span>
                 </div>
                 <div style={{ height:3, background:"var(--surface2)", borderRadius:4, overflow:"hidden" }}>
-                  <div style={{
-                    height:"100%", width:`${progressPct}%`,
+                  <div style={{ height:"100%", width:`${progressPct}%`,
                     background:"linear-gradient(90deg,var(--green),#00ccff)",
                     borderRadius:4, transition:"width .3s ease",
-                    boxShadow:"0 0 8px rgba(0,255,136,.4)"
-                  }}/>
+                    boxShadow:"0 0 8px rgba(0,255,136,.4)" }}/>
                 </div>
               </div>
             )}
@@ -457,9 +520,7 @@ export default function App() {
                   summary?.verdict==="malicious" ? "#ff335540" :
                   summary?.verdict==="suspicious"? "#ffd70040" :
                   summary?.verdict==="clean"     ? "#00ff8840" : "var(--border2)"
-                }`,
-                marginBottom:24, animation:"fadeUp .4s ease", transition:"border-color .5s"
-              }}>
+                }`, marginBottom:24, animation:"fadeUp .4s ease", transition:"border-color .5s" }}>
                 <div className="ts-summary-inner">
                   <div>
                     <div style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--text3)",
@@ -467,9 +528,12 @@ export default function App() {
                       {summary ? "FINAL VERDICT" : "LIVE VERDICT"}
                     </div>
                     {summary ? <Badge verdict={summary.verdict} size="lg"/> : <Badge verdict="scanning" size="lg"/>}
-                    <div style={{ marginTop:12, fontSize:13, color:"var(--text2)",
-                      wordBreak:"break-all" }}>
-                      <b style={{color:"var(--text)", fontFamily:"var(--mono)"}}>{query}</b>
+                    <div style={{ marginTop:12, fontSize:12, color:"var(--text2)", wordBreak:"break-all" }}>
+                      {fileInfo
+                        ? <><b style={{color:"var(--green)"}}>{fileInfo.name}</b><br/>
+                            <span style={{color:"var(--text3)", fontSize:10}}>{query}</span></>
+                        : <b style={{color:"var(--text)", fontFamily:"var(--mono)"}}>{query}</b>
+                      }
                     </div>
                   </div>
                   <ThreatGauge score={summary?.score ?? 0}/>
@@ -503,13 +567,12 @@ export default function App() {
 
             {/* Empty state */}
             {!scanning && !summary && Object.keys(engineStatus).length === 0 && (
-              <div style={{ textAlign:"center", padding:"60px 0", color:"var(--text3)" }}>
+              <div style={{ textAlign:"center", padding:"40px 0", color:"var(--text3)" }}>
                 <div style={{ fontSize:48, marginBottom:16, opacity:.3 }}>⚔</div>
                 <div style={{ fontFamily:"var(--mono)", fontSize:12, letterSpacing:2 }}>
-                  ENTER A URL, IP, HASH OR DOMAIN TO BEGIN
+                  ENTER A URL, IP, HASH OR DOMAIN — OR DROP A FILE ABOVE
                 </div>
-                <div style={{ marginTop:20, display:"flex", gap:10,
-                  justifyContent:"center", flexWrap:"wrap" }}>
+                <div style={{ marginTop:20, display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}>
                   {["https://example.com","8.8.8.8","44d88612fea8a8f36de82e1278abb02f","malware.xyz"].map(ex => (
                     <button key={ex} onClick={() => { setQuery(ex); inputRef.current?.focus(); }} style={{
                       background:"var(--surface)", border:"1px solid var(--border2)",
@@ -548,7 +611,9 @@ export default function App() {
                         <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
                           <Badge verdict={h.verdict}/>
                           <span style={{ fontFamily:"var(--mono)", fontSize:12,
-                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{h.query}</span>
+                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            {h.label || h.query}
+                          </span>
                         </div>
                         <div className="ts-history-meta">
                           <span style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--text3)" }}>
@@ -573,8 +638,9 @@ export default function App() {
               <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
                 {[
                   ["🔍 What is ThreatScan?","An open-source, multi-engine threat intelligence platform. Simultaneously queries 10 free and open threat intelligence APIs and streams results live as each engine responds."],
+                  ["📁 File Scanning","Drop any file onto the scan page — ThreatScan hashes it locally using SHA256 (the file never leaves your device) and scans the hash across all engines."],
                   ["⚡ Streaming Results","Results appear engine-by-engine as they arrive using Server-Sent Events — no waiting for all engines to finish before seeing data."],
-                  ["🔒 Privacy & Security","API keys are stored server-side in environment variables. ThreatScan logs nothing and has no database. Results are cached for 5 minutes for speed."],
+                  ["🔒 Privacy & Security","API keys are stored server-side in environment variables. ThreatScan logs nothing and has no database. Files are never uploaded — only their hash is scanned."],
                   ["📦 Contributing","Open source under MIT license. Add new engines by creating a file in backend/engines/ and registering it in server.js."],
                 ].map(([title, body]) => (
                   <div key={title} style={{ background:"var(--surface)",
