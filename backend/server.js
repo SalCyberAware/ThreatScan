@@ -61,6 +61,9 @@ const ENGINE_WEIGHTS = {
   whois:         0,
 };
 
+// SECURITY: Global scan timeout — no scan runs longer than 30 seconds
+const GLOBAL_SCAN_TIMEOUT = 30000;
+
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000;
 
@@ -93,16 +96,22 @@ function calcScore(results) {
   return Math.min(100, Math.round(raw));
 }
 
-// SECURITY FIX 3: Input sanitization
-// Rejects queries that are too long or contain suspicious characters
+// SECURITY FIX: Input sanitization
 function sanitizeQuery(raw) {
   if (!raw || typeof raw !== "string") return null;
   const q = raw.trim();
-  if (q.length === 0)    return null;
-  if (q.length > 2048)   return null; // max 2KB — no legitimate query needs more
-  // Block null bytes and raw newlines inside a single query
+  if (q.length === 0 || q.length > 2048) return null;
   if (/[\x00\r\n]/.test(q)) return null;
   return q;
+}
+
+// SECURITY FIX: Sanitize error messages before sending to client
+// Prevents stack traces and internal paths from leaking
+function safeError(err) {
+  if (!err) return "Unknown error";
+  const msg = err.message || String(err);
+  // Strip anything that looks like a file path or stack trace
+  return msg.replace(/\/[^\s]+/g, "[path]").slice(0, 200);
 }
 
 const app  = express();
@@ -110,15 +119,13 @@ const PORT = process.env.PORT || 4000;
 
 app.use(helmet());
 
-// SECURITY FIX 4: Lock CORS to your Vercel frontend only
-// Falls back to "*" in dev if FRONTEND_URL is not set
+// SECURITY FIX: Lock CORS to Vercel frontend only
 const allowedOrigins = process.env.FRONTEND_URL
   ? [process.env.FRONTEND_URL]
   : ["http://localhost:5173"];
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (curl, health checks, same-origin)
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin) || process.env.NODE_ENV !== "production") {
       return callback(null, true);
@@ -128,17 +135,16 @@ app.use(cors({
   methods: ["GET", "POST"],
 }));
 
-app.use(express.json());
+// SECURITY FIX: Request size limit — prevents large body attacks
+app.use(express.json({ limit: "10kb" }));
 
-// SECURITY FIX 2: Separate, stricter rate limit for single scans
+// Rate limiters
 const scanRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, max: 60,
   message: { error: "Too many requests — please try again in 15 minutes." },
   standardHeaders: true, legacyHeaders: false,
 });
 
-// SECURITY FIX 2: Bulk scan gets its own tighter rate limit
-// 20 queries per bulk scan × 10 requests = 200 API calls — needs to be stricter
 const bulkRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, max: 10,
   message: { error: "Too many bulk scan requests — please try again in 15 minutes." },
@@ -169,12 +175,18 @@ app.get("/api/scan/stream", scanRateLimit, async (req, res) => {
   res.setHeader("Content-Type",  "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection",    "keep-alive");
-  res.setHeader("Access-Control-Allow-Origin",
-    allowedOrigins[0] || "*");
+  res.setHeader("Access-Control-Allow-Origin", allowedOrigins[0] || "*");
   res.flushHeaders();
 
-  const send = (event, data) =>
-    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  const send = (event, data) => {
+    if (!res.writableEnded) {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    }
+  };
+
+  // SECURITY FIX: Detect client disconnect and abort scan
+  let clientDisconnected = false;
+  req.on("close", () => { clientDisconnected = true; });
 
   const cacheKey = `${type}:${qLow}`;
   const cached   = getCached(cacheKey);
@@ -197,28 +209,49 @@ app.get("/api/scan/stream", scanRateLimit, async (req, res) => {
 
   const allResults = [];
 
-  await Promise.allSettled(
-    engineList.map(async ([id, engine]) => {
-      const keyName = ENGINE_KEYS[id];
-      if (keyName && !process.env[keyName]) {
-        const r = { id, verdict:"skipped", detail:`No API key set for ${id}` };
-        allResults.push(r); send("engine", r); return;
-      }
-      const timeout = ENGINE_TIMEOUTS[id] || 10000;
-      try {
-        const result = await Promise.race([
-          engine[method](q),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error(`${id} timeout`)), timeout))
-        ]);
-        const r = { id, ...result };
-        allResults.push(r); send("engine", r);
-      } catch (err) {
-        const r = { id, verdict:"error", detail: err.message };
-        allResults.push(r); send("engine", r);
-      }
-    })
+  // SECURITY FIX: Global 30s timeout wraps the entire scan
+  const globalTimeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("Global scan timeout")), GLOBAL_SCAN_TIMEOUT)
   );
+
+  try {
+    await Promise.race([
+      Promise.allSettled(
+        engineList.map(async ([id, engine]) => {
+          // SECURITY FIX: Skip engine if client already disconnected
+          if (clientDisconnected) return;
+
+          const keyName = ENGINE_KEYS[id];
+          if (keyName && !process.env[keyName]) {
+            const r = { id, verdict:"skipped", detail:`No API key set for ${id}` };
+            allResults.push(r); send("engine", r); return;
+          }
+          const timeout = ENGINE_TIMEOUTS[id] || 10000;
+          try {
+            const result = await Promise.race([
+              engine[method](q),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error(`${id} timeout`)), timeout))
+            ]);
+            const r = { id, ...result };
+            allResults.push(r);
+            if (!clientDisconnected) send("engine", r);
+          } catch (err) {
+            // SECURITY FIX: Sanitize error before sending to client
+            const r = { id, verdict:"error", detail: safeError(err) };
+            allResults.push(r);
+            if (!clientDisconnected) send("engine", r);
+          }
+        })
+      ),
+      globalTimeout,
+    ]);
+  } catch (err) {
+    // Global timeout fired — send whatever results we have so far
+    if (!clientDisconnected) send("engine", { id:"_timeout", verdict:"info", detail:"Some engines timed out" });
+  }
+
+  if (clientDisconnected) return res.end();
 
   const score        = calcScore(allResults);
   const active       = allResults.filter(r => !["skipped","error","info"].includes(r.verdict));
@@ -233,7 +266,9 @@ app.get("/api/scan/stream", scanRateLimit, async (req, res) => {
     cached: false, scannedAt: new Date().toISOString(),
   };
 
-  setCache(cacheKey, { query: q, type, engines: allResults, ...summary });
+  if (allResults.length > 0) {
+    setCache(cacheKey, { query: q, type, engines: allResults, ...summary });
+  }
   send("done", summary);
   res.end();
 });
@@ -243,7 +278,6 @@ app.get("/api/scan/bulk", bulkRateLimit, async (req, res) => {
   const raw = req.query.queries;
   if (!raw) return res.status(400).json({ error: "queries parameter required" });
 
-  // SECURITY FIX 3: Sanitize each individual query in the bulk list
   const queries = [...new Set(
     raw.split(/[\n,]+/)
       .map(q => sanitizeQuery(q))
@@ -256,18 +290,24 @@ app.get("/api/scan/bulk", bulkRateLimit, async (req, res) => {
   res.setHeader("Content-Type",  "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection",    "keep-alive");
-  res.setHeader("Access-Control-Allow-Origin",
-    allowedOrigins[0] || "*");
+  res.setHeader("Access-Control-Allow-Origin", allowedOrigins[0] || "*");
   res.flushHeaders();
 
-  const send = (event, data) =>
-    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  const send = (event, data) => {
+    if (!res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  // SECURITY FIX: Disconnect detection for bulk scan
+  let clientDisconnected = false;
+  req.on("close", () => { clientDisconnected = true; });
 
   const methodMap = { url:"scanUrl", ip:"scanIp", hash:"scanHash", domain:"scanDomain" };
   send("start", { total: queries.length, queries });
   const results = [];
 
   for (let i = 0; i < queries.length; i++) {
+    if (clientDisconnected) break;
+
     const q      = queries[i];
     const type   = detectType(q.toLowerCase()) || "domain";
     const method = methodMap[type];
@@ -298,7 +338,7 @@ app.get("/api/scan/bulk", bulkRateLimit, async (req, res) => {
           ]);
           allResults.push({ id, ...engineResult });
         } catch (err) {
-          allResults.push({ id, verdict:"error", detail: err.message });
+          allResults.push({ id, verdict:"error", detail: safeError(err) });
         }
       })
     );
@@ -319,13 +359,15 @@ app.get("/api/scan/bulk", bulkRateLimit, async (req, res) => {
     results.push(result); send("result", result);
   }
 
-  send("done", {
-    total: queries.length,
-    malicious: results.filter(r => r.verdict === "malicious").length,
-    suspicious: results.filter(r => r.verdict === "suspicious").length,
-    clean: results.filter(r => r.verdict === "clean").length,
-    results,
-  });
+  if (!clientDisconnected) {
+    send("done", {
+      total: queries.length,
+      malicious: results.filter(r => r.verdict === "malicious").length,
+      suspicious: results.filter(r => r.verdict === "suspicious").length,
+      clean: results.filter(r => r.verdict === "clean").length,
+      results,
+    });
+  }
   res.end();
 });
 
@@ -358,7 +400,7 @@ app.post("/api/scan", scanRateLimit, async (req, res) => {
           setTimeout(() => reject(new Error(`${id} timeout`)), timeout))
       ]);
       return { id, ...result };
-    } catch (err) { return { id, verdict:"error", detail: err.message }; }
+    } catch (err) { return { id, verdict:"error", detail: safeError(err) }; }
   });
 
   const settled = await Promise.allSettled(enginePromises);
