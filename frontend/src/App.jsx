@@ -517,6 +517,27 @@ export default function App() {
   const suspCount   = Object.values(engineData).filter(r => r.verdict === "suspicious").length;
   const cleanCount  = Object.values(engineData).filter(r => r.verdict === "clean").length;
 
+  // ── Export single scan results as JSON ────────────────────────────────────
+  const exportJSON = () => {
+    if (!summary) return;
+    const output = {
+      query:      query.trim(),
+      fileName:   fileInfo?.name || null,
+      type:       detectInputType(query.trim()),
+      verdict:    summary.verdict,
+      score:      summary.score,
+      scannedAt:  summary.scannedAt || new Date().toISOString(),
+      engines:    Object.entries(engineData).map(([id, data]) => ({ id, ...data })),
+    };
+    const blob = new Blob([JSON.stringify(output, null, 2)], { type:"application/json" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    const name = fileInfo ? fileInfo.name : query.trim().replace(/[^a-z0-9]/gi, "_").slice(0, 40);
+    a.href = url; a.download = `threatscan-${name}-${Date.now()}.json`; a.click();
+    URL.revokeObjectURL(url);
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   return (
     <>
       <Styles/>
@@ -664,6 +685,14 @@ export default function App() {
                             <span style={{color:"var(--text3)",fontSize:10}}>{query}</span></>
                         : <b style={{color:"var(--text)",fontFamily:"var(--mono)"}}>{query}</b>}
                     </div>
+                    {summary && (
+                      <button onClick={exportJSON} style={{
+                        marginTop:14, background:"none", border:"1px solid var(--border2)",
+                        color:"var(--green)", borderRadius:6, padding:"5px 12px",
+                        cursor:"pointer", fontFamily:"var(--mono)", fontSize:10,
+                        fontWeight:700, letterSpacing:1,
+                      }}>⬇ EXPORT JSON</button>
+                    )}
                   </div>
                   <ThreatGauge score={summary?.score ?? 0}/>
                   <div className="ts-counts">
