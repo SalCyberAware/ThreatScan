@@ -237,6 +237,12 @@ const EngineCard = ({ engineId, data, status }) => {
           {data.threats?.length  > 0 && <span>Threats: <b style={{color:"#ff3355"}}>{data.threats.join(", ")}</b></span>}
           {data.brands?.length   > 0 && <span>Brands: <b style={{color:"#ffd700"}}>{data.brands.join(", ")}</b></span>}
           {data.indicators?.length > 0 && <span>IOCs: <b style={{color:"#ff3355"}}>{data.indicators.join(", ")}</b></span>}
+          {data.registrar   && <span style={{width:"100%"}}>Registrar: <b style={{color:"var(--text)"}}>{data.registrar}</b></span>}
+          {data.created     && <span>Created: <b style={{color:"var(--text)"}}>{data.created}</b></span>}
+          {data.expires     && <span>Expires: <b style={{color:"var(--text)"}}>{data.expires}</b></span>}
+          {data.aRecords?.length   > 0 && <span style={{width:"100%"}}>A Records: <b style={{color:"var(--text)"}}>{data.aRecords.join(", ")}</b></span>}
+          {data.mxRecords?.length  > 0 && <span style={{width:"100%"}}>MX: <b style={{color:"var(--text)"}}>{data.mxRecords.join(", ")}</b></span>}
+          {data.nameservers?.length > 0 && <span style={{width:"100%"}}>NS: <b style={{color:"var(--text)"}}>{data.nameservers.join(", ")}</b></span>}
         </div>
       )}
     </div>
