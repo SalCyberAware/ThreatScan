@@ -584,7 +584,7 @@ export default function App() {
               </div>
             </div>
             <nav className="ts-nav">
-              {["scan","bulk","history","about"].map(t => (
+              {["scan","bulk","trends","history","about"].map(t => (
                 <button key={t} onClick={() => setTab(t)} style={{
                   background: tab===t ? "var(--surface2)":"none",
                   border:`1px solid ${tab===t?"var(--border2)":"transparent"}`,
@@ -798,7 +798,51 @@ export default function App() {
             </div>
           )}
 
-          {tab === "about" && (
+{tab === "trends" && (
+            <div style={{ animation:"fadeUp .3s ease" }}>
+              <div style={{ fontFamily:"var(--mono)", fontSize:13, color:"var(--green)",
+                letterSpacing:2, marginBottom:8 }}>🔥 TRENDING THREATS</div>
+              <div style={{ fontSize:13, color:"var(--text2)", marginBottom:24 }}>
+                Top threats from your current session, ranked by score.
+              </div>
+              {history.length === 0 ? (
+                <div style={{ textAlign:"center", padding:60, color:"var(--text3)",
+                  fontFamily:"var(--mono)", fontSize:12, letterSpacing:2 }}>NO SCANS YET — RUN SOME SCANS FIRST</div>
+              ) : (
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  {[...history].sort((a,b) => (b.score||0)-(a.score||0)).map((h, i) => (
+                    <div key={i} onClick={() => { setQuery(h.query); setManualType(null); setTab("scan"); }}
+                      style={{ background:"var(--surface)", border:`1px solid ${
+                        h.verdict==="malicious"?"#ff335540":h.verdict==="suspicious"?"#ffd70040":"var(--border2)"
+                      }`, borderRadius:8, padding:"14px 16px", cursor:"pointer",
+                        display:"flex", alignItems:"center", gap:16, flexWrap:"wrap",
+                        transition:"border-color .2s" }}>
+                      <div style={{ fontFamily:"var(--mono)", fontSize:22, fontWeight:700, minWidth:52, textAlign:"center",
+                        color: h.score>=50?"#ff3355":h.score>=20?"#ffd700":"#00ff88" }}>
+                        {h.score||0}
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                          <Badge verdict={h.verdict}/>
+                          <span style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--text3)" }}>
+                            {(h.type||"auto").toUpperCase()}
+                          </span>
+                        </div>
+                        <div style={{ fontFamily:"var(--mono)", fontSize:12,
+                          overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                          color:"var(--text)" }}>{h.label||h.query}</div>
+                      </div>
+                      <div style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--text3)", flexShrink:0 }}>
+                        {h.time}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+                    {tab === "about" && (
             <div style={{ animation:"fadeUp .3s ease", maxWidth:720 }}>
               <div style={{ fontFamily:"var(--mono)", fontSize:13, color:"var(--green)", letterSpacing:2, marginBottom:24 }}>ℹ ABOUT THREATSCAN</div>
               <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
