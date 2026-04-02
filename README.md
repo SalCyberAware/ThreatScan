@@ -59,7 +59,7 @@ ThreatScan is a free, open-source alternative to VirusTotal. Instead of sending 
 | AlienVault OTX | All | Unlimited | ✅ |
 | GreyNoise | IP | 1,000/day | ✅ |
 | IPInfo | IP | 50,000/month | ✅ |
-| PhishTank | URL | Free | ✅ |
+| URLhaus (abuse.ch) | URL, Domain, Hash | Unlimited | ❌ |
 | Google SafeBrowse | URL, Domain | 10,000/day | ✅ |
 | ThreatFox | All | Unlimited | ❌ |
 | WHOIS / DNS | URL, Domain | Unlimited | ❌ |
