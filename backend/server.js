@@ -23,7 +23,7 @@ const ENGINE_KEYS = {
   virustotal:    "VT_API_KEY",
   abuseipdb:     "ABUSEIPDB_KEY",
   urlscan:       "URLSCAN_KEY",
-  malwarebazaar: null,
+  malwarebazaar: "MALWAREBAZAAR_KEY",
   otx:           "OTX_KEY",
   greynoise:     "GREYNOISE_KEY",
   ipinfo:        "IPINFO_KEY",
