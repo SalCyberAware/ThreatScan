@@ -22,12 +22,83 @@ const Styles = () => (
       0%,100%{border-color:var(--border2);box-shadow:none}
       50%{border-color:var(--green);box-shadow:0 0 12px rgba(0,255,136,.15)}
     }
-    @keyframes scanPulse {
-      0%,100%{box-shadow:0 0 0 0 rgba(0,255,136,0)}
-      50%{box-shadow:0 0 0 6px rgba(0,255,136,.1)}
-    }
     input:focus { outline:none; }
     button:focus-visible { outline:2px solid var(--green); outline-offset:2px; }
+
+    /* ── Mobile fixes ─────────────────────────────────────────────────────── */
+    .ts-header-inner {
+      max-width:1200px; margin:0 auto; height:60px;
+      display:flex; align-items:center; justify-content:space-between;
+      padding:0 24px;
+    }
+    .ts-nav { display:flex; gap:4px; }
+    .ts-nav button { padding:6px 10px; font-size:10px; }
+
+    .ts-main { max-width:1200px; margin:0 auto; padding:32px 24px; position:relative; z-index:1; }
+
+    .ts-search-bar {
+      display:flex; border:1px solid var(--border2); border-radius:10px;
+      overflow:hidden; background:var(--surface);
+    }
+    .ts-search-bar input {
+      flex:1; background:none; border:none; padding:16px;
+      color:var(--text); font-size:14px; font-family:var(--mono);
+      min-width:0;
+    }
+    .ts-scan-btn {
+      background:var(--green); color:#000; border:none;
+      padding:0 24px; cursor:pointer; font-family:var(--mono);
+      font-size:13px; font-weight:700; letter-spacing:1px;
+      display:flex; align-items:center; gap:8px;
+      white-space:nowrap; flex-shrink:0; transition:all .2s;
+    }
+    .ts-scan-btn:disabled { background:var(--surface2); color:var(--text3); cursor:not-allowed; }
+
+    .ts-summary-inner {
+      display:flex; flex-wrap:wrap; gap:24px;
+      align-items:center; justify-content:space-between;
+    }
+
+    .ts-counts { display:flex; gap:20px; }
+
+    .ts-engine-grid {
+      display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+      gap:12px;
+    }
+
+    .ts-history-item {
+      display:flex; align-items:center;
+      justify-content:space-between; flex-wrap:wrap; gap:8px;
+    }
+    .ts-history-meta { display:flex; gap:14px; align-items:center; }
+
+    /* ── Tablet (max 768px) ───────────────────────────────────────────────── */
+    @media (max-width:768px) {
+      .ts-header-inner { padding:0 16px; height:52px; }
+      .ts-logo-sub { display:none; }
+      .ts-main { padding:24px 16px; }
+      .ts-engine-grid { grid-template-columns:1fr; }
+      .ts-summary-inner { gap:16px; justify-content:center; text-align:center; }
+      .ts-counts { justify-content:center; }
+    }
+
+    /* ── Mobile (max 480px) ───────────────────────────────────────────────── */
+    @media (max-width:480px) {
+      .ts-header-inner { height:48px; }
+      .ts-nav button { padding:4px 8px; font-size:9px; }
+      .ts-search-bar { flex-direction:column; border-radius:10px; }
+      .ts-search-bar input { padding:14px 16px; border-bottom:1px solid var(--border2); }
+      .ts-scan-btn {
+        width:100%; justify-content:center;
+        padding:14px; border-radius:0 0 10px 10px;
+      }
+      .ts-main { padding:16px 12px; }
+      .ts-counts { gap:12px; }
+      .ts-counts > div > div:first-child { font-size:24px !important; }
+      .ts-history-meta { gap:8px; }
+      .ts-history-item { flex-direction:column; align-items:flex-start; }
+    }
   `}</style>
 );
 
@@ -56,15 +127,12 @@ const TYPES = [
   { id:"domain", label:"Domain",       placeholder:"malware-domain.example"                   },
 ];
 
-// ─── FIX: Client-side type detection (mirrors backend detect.js) ──────────────
-// This runs on every keystroke so the correct tab is always highlighted,
-// and more importantly, the correct type is sent to the backend on scan.
-const IP_RE      = /^(\d{1,3}\.){3}\d{1,3}$|^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
-const MD5_RE     = /^[a-fA-F0-9]{32}$/;
-const SHA1_RE    = /^[a-fA-F0-9]{40}$/;
-const SHA256_RE  = /^[a-fA-F0-9]{64}$/;
-const URL_RE     = /^https?:\/\/.+/i;
-const DOMAIN_RE  = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+const IP_RE     = /^(\d{1,3}\.){3}\d{1,3}$|^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
+const MD5_RE    = /^[a-fA-F0-9]{32}$/;
+const SHA1_RE   = /^[a-fA-F0-9]{40}$/;
+const SHA256_RE = /^[a-fA-F0-9]{64}$/;
+const URL_RE    = /^https?:\/\/.+/i;
+const DOMAIN_RE = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
 
 function detectInputType(q) {
   if (!q || !q.trim()) return "auto";
@@ -75,7 +143,6 @@ function detectInputType(q) {
   if (DOMAIN_RE.test(s)) return "domain";
   return "auto";
 }
-// ─────────────────────────────────────────────────────────────────────────────
 
 const Badge = ({ verdict, size="sm" }) => {
   const MAP = {
@@ -117,7 +184,7 @@ const ThreatGauge = ({ score }) => {
   const label = score>=70?"HIGH RISK":score>=30?"MODERATE":"LOW RISK";
   return (
     <div style={{ textAlign:"center" }}>
-      <svg width="160" height="90" viewBox="0 0 160 90">
+      <svg width="140" height="80" viewBox="0 0 160 90">
         <defs>
           <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%"   stopColor="#00ff88"/>
@@ -151,15 +218,13 @@ const EngineCard = ({ engineId, data, status }) => {
     : data?.verdict==="suspicious" ? "#ffd700"
     : data?.verdict==="clean"      ? "#00ff8840"
     : "#1a2035";
-
   return (
     <div style={{
       background:"var(--surface2)", border:`1px solid ${borderColor}`,
       borderRadius:8, padding:"14px 16px",
       transition:"border-color .4s, box-shadow .4s",
       animation:"slideIn .25s ease both",
-      boxShadow: isScanning ? "none"
-        : data?.verdict==="malicious" ? "0 0 16px rgba(255,51,85,.07)" : "none",
+      boxShadow: data?.verdict==="malicious" ? "0 0 16px rgba(255,51,85,.07)" : "none",
     }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -192,66 +257,37 @@ const EngineCard = ({ engineId, data, status }) => {
 };
 
 export default function App() {
-  const [query,      setQuery]      = useState("");
-  const [type,       setType]       = useState("auto");
-  const [userPickedType, setUserPickedType] = useState(false); // tracks manual tab selection
-  const [scanning,   setScanning]   = useState(false);
-  const [engineData, setEngineData] = useState({});
+  const [query,        setQuery]        = useState("");
+  const [detectedType, setDetectedType] = useState("auto");
+  const [manualType,   setManualType]   = useState(null);
+  const [scanning,     setScanning]     = useState(false);
+  const [engineData,   setEngineData]   = useState({});
   const [engineStatus, setEngineStatus] = useState({});
-  const [summary,    setSummary]    = useState(null);
-  const [progress,   setProgress]   = useState(0);
-  const [total,      setTotal]      = useState(10);
-  const [error,      setError]      = useState(null);
-  const [history,    setHistory]    = useState(() => {
+  const [summary,      setSummary]      = useState(null);
+  const [total,        setTotal]        = useState(10);
+  const [error,        setError]        = useState(null);
+  const [history,      setHistory]      = useState(() => {
     try { return JSON.parse(localStorage.getItem("ts_history") || "[]"); } catch { return []; }
   });
   const [tab, setTab] = useState("scan");
   const inputRef = useRef();
   const esSrc    = useRef(null);
 
-  // ─── FIX: Auto-detect type as user types ────────────────────────────────────
-  // Only auto-switch if the user hasn't manually clicked a type tab.
-  // Resets to auto when the input is cleared.
   useEffect(() => {
-    if (userPickedType) return; // user explicitly chose a type — respect that
-    if (!query.trim()) {
-      setType("auto");
-      return;
-    }
-    const detected = detectInputType(query.trim());
-    setType(detected);
-  }, [query, userPickedType]);
-  // ─────────────────────────────────────────────────────────────────────────────
+    setDetectedType(detectInputType(query));
+    setManualType(null);
+  }, [query]);
 
-  const handleTypeClick = (typeId) => {
-    setType(typeId);
-    setUserPickedType(typeId !== "auto"); // clicking Auto-detect re-enables auto-switching
-  };
-
-  const handleQueryChange = (e) => {
-    setQuery(e.target.value);
-    // If the user starts typing something new, let auto-detect take over again
-    if (userPickedType && !e.target.value.trim()) {
-      setUserPickedType(false);
-    }
-  };
+  const activeType = manualType || detectedType;
 
   const handleScan = () => {
     if (!query.trim() || scanning) return;
-
-    // ── FIX: Always resolve the true type at scan time ───────────────────────
-    // Even if auto-detect lagged or userPickedType is set to something wrong,
-    // we re-detect here so the backend always gets the correct type.
-    const resolvedType = (type === "auto" || !type)
-      ? detectInputType(query.trim())
-      : type;
-    // ─────────────────────────────────────────────────────────────────────────
+    const resolvedType = activeType === "auto" ? detectInputType(query.trim()) : activeType;
 
     setScanning(true);
     setEngineData({});
     setEngineStatus({});
     setSummary(null);
-    setProgress(0);
     setError(null);
 
     const initStatus = {};
@@ -260,33 +296,24 @@ export default function App() {
 
     if (esSrc.current) esSrc.current.close();
 
-    const params = new URLSearchParams({
-      query: query.trim(),
-      type: resolvedType,   // always send explicit resolved type — never "auto"
-    });
-
-    const url = `${BACKEND}/scan/stream?${params}`;
-    const es  = new EventSource(url);
+    const params = new URLSearchParams({ query: query.trim(), type: resolvedType });
+    const es = new EventSource(`${BACKEND}/scan/stream?${params}`);
     esSrc.current = es;
 
     es.addEventListener("start", (e) => {
       const data = JSON.parse(e.data);
       setTotal(data.total || 10);
     });
-
     es.addEventListener("engine", (e) => {
       const data = JSON.parse(e.data);
       setEngineData(prev => ({ ...prev, [data.id]: data }));
       setEngineStatus(prev => ({ ...prev, [data.id]: "done" }));
-      setProgress(prev => prev + 1);
     });
-
     es.addEventListener("done", (e) => {
       const data = JSON.parse(e.data);
       setSummary(data);
       setScanning(false);
       es.close();
-
       const newHistory = [
         { query: query.trim(), type: resolvedType, verdict: data.verdict,
           score: data.score, time: new Date().toLocaleTimeString() },
@@ -295,7 +322,6 @@ export default function App() {
       setHistory(newHistory);
       try { localStorage.setItem("ts_history", JSON.stringify(newHistory)); } catch {}
     });
-
     es.onerror = () => {
       setError("Connection error — please try again.");
       setScanning(false);
@@ -303,15 +329,11 @@ export default function App() {
     };
   };
 
-  const doneCount = Object.values(engineStatus).filter(s => s === "done").length;
+  const doneCount  = Object.values(engineStatus).filter(s => s === "done").length;
   const progressPct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
-
   const malCount   = Object.values(engineData).filter(r => r.verdict === "malicious").length;
   const suspCount  = Object.values(engineData).filter(r => r.verdict === "suspicious").length;
   const cleanCount = Object.values(engineData).filter(r => r.verdict === "clean").length;
-
-  // Derive the label shown in the tab for display purposes
-  const displayedType = query.trim() ? type : "auto";
 
   return (
     <>
@@ -321,14 +343,11 @@ export default function App() {
           background:"repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,255,136,.012) 2px,rgba(0,255,136,.012) 4px)"
         }}/>
 
-        {/* Header */}
-        <header style={{ borderBottom:"1px solid var(--border)", padding:"0 32px",
-          position:"sticky", top:0, zIndex:100,
+        <header style={{ borderBottom:"1px solid var(--border)", position:"sticky", top:0, zIndex:100,
           background:"rgba(7,9,15,.92)", backdropFilter:"blur(12px)" }}>
-          <div style={{ maxWidth:1200, margin:"0 auto", height:60,
-            display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-              <div style={{ width:32, height:32, borderRadius:8,
+          <div className="ts-header-inner">
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <div style={{ width:32, height:32, borderRadius:8, flexShrink:0,
                 background:"linear-gradient(135deg,#00ff88,#00cc6a)",
                 display:"flex", alignItems:"center", justifyContent:"center",
                 fontSize:18, boxShadow:"0 0 20px rgba(0,255,136,.3)" }}>⚔</div>
@@ -336,19 +355,19 @@ export default function App() {
                 <div style={{ fontFamily:"var(--mono)", fontSize:15, fontWeight:700, letterSpacing:1 }}>
                   THREAT<span style={{color:"var(--green)"}}>SCAN</span>
                 </div>
-                <div style={{ fontSize:9, color:"var(--text3)", fontFamily:"var(--mono)", letterSpacing:2 }}>
+                <div className="ts-logo-sub" style={{ fontSize:9, color:"var(--text3)", fontFamily:"var(--mono)", letterSpacing:2 }}>
                   OPEN SOURCE · MULTI-ENGINE
                 </div>
               </div>
             </div>
-            <nav style={{ display:"flex", gap:4 }}>
+            <nav className="ts-nav">
               {["scan","history","about"].map(t => (
                 <button key={t} onClick={() => setTab(t)} style={{
                   background: tab===t ? "var(--surface2)":"none",
                   border:`1px solid ${tab===t?"var(--border2)":"transparent"}`,
                   color: tab===t ? "var(--green)":"var(--text2)",
-                  padding:"6px 14px", borderRadius:6, cursor:"pointer",
-                  fontFamily:"var(--mono)", fontSize:11, letterSpacing:1,
+                  borderRadius:6, cursor:"pointer",
+                  fontFamily:"var(--mono)", letterSpacing:1,
                   textTransform:"uppercase", transition:"all .2s"
                 }}>{t}</button>
               ))}
@@ -356,11 +375,11 @@ export default function App() {
           </div>
         </header>
 
-        <main style={{ maxWidth:1200, margin:"0 auto", padding:"32px 24px", position:"relative", zIndex:1 }}>
+        <main className="ts-main">
 
           {tab === "scan" && <>
-            <div style={{ textAlign:"center", marginBottom:36 }}>
-              <h1 style={{ fontFamily:"var(--mono)", fontSize:"clamp(22px,4vw,40px)",
+            <div style={{ textAlign:"center", marginBottom:32 }}>
+              <h1 style={{ fontFamily:"var(--mono)", fontSize:"clamp(20px,4vw,40px)",
                 fontWeight:700, letterSpacing:-1, lineHeight:1.1, marginBottom:10 }}>
                 Multi-Engine <span style={{
                   background:"linear-gradient(90deg,var(--green),#00ccff)",
@@ -372,51 +391,35 @@ export default function App() {
               </p>
             </div>
 
-            {/* Type selector */}
+            {/* Type tabs */}
             <div style={{ display:"flex", gap:6, justifyContent:"center", flexWrap:"wrap", marginBottom:16 }}>
               {TYPES.map(t => {
-                const isActive = displayedType === t.id;
-                const isAutoDetected = !userPickedType && t.id === displayedType && t.id !== "auto";
+                const isActive = activeType === t.id;
                 return (
-                  <button key={t.id} onClick={() => handleTypeClick(t.id)} style={{
+                  <button key={t.id} onClick={() => setManualType(t.id === "auto" ? null : t.id)} style={{
                     background: isActive ? "var(--green)":"var(--surface2)",
                     color:      isActive ? "#000":"var(--text2)",
-                    border:`1px solid ${isActive ? "var(--green)" : isAutoDetected ? "var(--green)40" : "var(--border2)"}`,
-                    padding:"6px 14px", borderRadius:6, cursor:"pointer",
-                    fontFamily:"var(--mono)", fontSize:11, letterSpacing:1,
+                    border:`1px solid ${isActive ? "var(--green)" : "var(--border2)"}`,
+                    padding:"5px 12px", borderRadius:6, cursor:"pointer",
+                    fontFamily:"var(--mono)", fontSize:10, letterSpacing:1,
                     fontWeight:isActive?700:400, transition:"all .15s",
-                    // Subtle pulse on auto-detected tab to signal it switched automatically
-                    boxShadow: isAutoDetected ? "0 0 8px rgba(0,255,136,.15)" : "none",
-                  }}>
-                    {t.label}
-                    {/* Show a small dot when this tab was auto-detected */}
-                    {isAutoDetected && (
-                      <span style={{ marginLeft:5, fontSize:8, opacity:.7 }}>●</span>
-                    )}
-                  </button>
+                  }}>{t.label}</button>
                 );
               })}
             </div>
 
             {/* Search bar */}
             <div style={{ marginBottom:16 }}>
-              <div style={{ display:"flex", border:"1px solid var(--border2)", borderRadius:10,
-                overflow:"hidden", background:"var(--surface)",
-                animation: scanning ? "borderGlow 2s ease-in-out infinite":"none" }}>
+              <div className="ts-search-bar" style={{
+                animation: scanning ? "borderGlow 2s ease-in-out infinite":"none"
+              }}>
                 <input ref={inputRef} value={query}
-                  onChange={handleQueryChange}
+                  onChange={e => { setQuery(e.target.value); }}
                   onKeyDown={e => e.key==="Enter" && handleScan()}
-                  placeholder={TYPES.find(t => t.id === displayedType)?.placeholder || TYPES[0].placeholder}
-                  style={{ flex:1, background:"none", border:"none", padding:"16px",
-                    color:"var(--text)", fontSize:14, fontFamily:"var(--mono)" }}
+                  placeholder={TYPES.find(t => t.id === activeType)?.placeholder || TYPES[0].placeholder}
                 />
-                <button onClick={handleScan} disabled={!query.trim()||scanning} style={{
-                  background: scanning ? "var(--surface2)":"var(--green)",
-                  color: scanning ? "var(--text3)":"#000",
-                  border:"none", padding:"0 28px", cursor:scanning?"not-allowed":"pointer",
-                  fontFamily:"var(--mono)", fontSize:13, fontWeight:700, letterSpacing:1,
-                  display:"flex", alignItems:"center", gap:8, minWidth:140, transition:"all .2s"
-                }}>
+                <button className="ts-scan-btn" onClick={handleScan}
+                  disabled={!query.trim()||scanning}>
                   {scanning ? <><Spinner color="#666" size={16}/> SCANNING…</> : "⚔ SCAN NOW"}
                 </button>
               </div>
@@ -441,43 +444,36 @@ export default function App() {
               </div>
             )}
 
-            {/* Error */}
             {error && (
               <div style={{ background:"#ff335510", border:"1px solid #ff335540",
                 borderRadius:8, padding:"12px 16px", marginBottom:20,
-                color:"#ff3355", fontFamily:"var(--mono)", fontSize:12 }}>
-                ⚠ {error}
-              </div>
+                color:"#ff3355", fontFamily:"var(--mono)", fontSize:12 }}>⚠ {error}</div>
             )}
 
             {/* Summary card */}
             {(scanning || summary) && doneCount > 0 && (
-              <div style={{ background:"var(--surface)", borderRadius:12, padding:28,
+              <div style={{ background:"var(--surface)", borderRadius:12, padding:"20px 24px",
                 border:`1px solid ${
                   summary?.verdict==="malicious" ? "#ff335540" :
                   summary?.verdict==="suspicious"? "#ffd70040" :
                   summary?.verdict==="clean"     ? "#00ff8840" : "var(--border2)"
                 }`,
-                marginBottom:24, animation:"fadeUp .4s ease",
-                transition:"border-color .5s"
+                marginBottom:24, animation:"fadeUp .4s ease", transition:"border-color .5s"
               }}>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:24,
-                  alignItems:"center", justifyContent:"space-between" }}>
+                <div className="ts-summary-inner">
                   <div>
                     <div style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--text3)",
                       letterSpacing:2, marginBottom:10 }}>
                       {summary ? "FINAL VERDICT" : "LIVE VERDICT"}
                     </div>
-                    {summary
-                      ? <Badge verdict={summary.verdict} size="lg"/>
-                      : <Badge verdict="scanning" size="lg"/>
-                    }
-                    <div style={{ marginTop:12, fontSize:13, color:"var(--text2)" }}>
+                    {summary ? <Badge verdict={summary.verdict} size="lg"/> : <Badge verdict="scanning" size="lg"/>}
+                    <div style={{ marginTop:12, fontSize:13, color:"var(--text2)",
+                      wordBreak:"break-all" }}>
                       <b style={{color:"var(--text)", fontFamily:"var(--mono)"}}>{query}</b>
                     </div>
                   </div>
                   <ThreatGauge score={summary?.score ?? 0}/>
-                  <div style={{ display:"flex", gap:20 }}>
+                  <div className="ts-counts">
                     {[
                       { label:"MALICIOUS",  val:malCount,   color:"#ff3355" },
                       { label:"SUSPICIOUS", val:suspCount,  color:"#ffd700" },
@@ -497,15 +493,10 @@ export default function App() {
 
             {/* Engine grid */}
             {Object.keys(engineStatus).length > 0 && (
-              <div style={{ display:"grid",
-                gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:12 }}>
+              <div className="ts-engine-grid">
                 {ENGINE_ORDER.map(id => (
-                  <EngineCard
-                    key={id}
-                    engineId={id}
-                    data={engineData[id]}
-                    status={engineStatus[id] || "scanning"}
-                  />
+                  <EngineCard key={id} engineId={id}
+                    data={engineData[id]} status={engineStatus[id] || "scanning"}/>
                 ))}
               </div>
             )}
@@ -520,11 +511,7 @@ export default function App() {
                 <div style={{ marginTop:20, display:"flex", gap:10,
                   justifyContent:"center", flexWrap:"wrap" }}>
                   {["https://example.com","8.8.8.8","44d88612fea8a8f36de82e1278abb02f","malware.xyz"].map(ex => (
-                    <button key={ex} onClick={() => {
-                      setQuery(ex);
-                      setUserPickedType(false); // let auto-detect pick the type
-                      inputRef.current?.focus();
-                    }} style={{
+                    <button key={ex} onClick={() => { setQuery(ex); inputRef.current?.focus(); }} style={{
                       background:"var(--surface)", border:"1px solid var(--border2)",
                       color:"var(--text2)", padding:"7px 12px", borderRadius:6,
                       cursor:"pointer", fontFamily:"var(--mono)", fontSize:10
@@ -535,7 +522,6 @@ export default function App() {
             )}
           </>}
 
-          {/* History tab */}
           {tab === "history" && (
             <div style={{ animation:"fadeUp .3s ease" }}>
               <div style={{ fontFamily:"var(--mono)", fontSize:13, color:"var(--green)",
@@ -555,26 +541,23 @@ export default function App() {
               ) : (
                 <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                   {history.map((h, i) => (
-                    <div key={i} onClick={() => {
-                      setQuery(h.query);
-                      setType(h.type || "auto");
-                      setUserPickedType(h.type && h.type !== "auto");
-                      setTab("scan");
-                    }} style={{ background:"var(--surface)", border:"1px solid var(--border2)",
-                        borderRadius:8, padding:"12px 16px", cursor:"pointer",
-                        display:"flex", alignItems:"center", justifyContent:"space-between",
-                        flexWrap:"wrap", gap:8 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                        <Badge verdict={h.verdict}/>
-                        <span style={{ fontFamily:"var(--mono)", fontSize:12 }}>{h.query}</span>
-                      </div>
-                      <div style={{ display:"flex", gap:14, alignItems:"center" }}>
-                        <span style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--text3)" }}>
-                          {(h.type||"auto").toUpperCase()}</span>
-                        <span style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--text3)" }}>{h.time}</span>
-                        <span style={{ fontFamily:"var(--mono)", fontSize:11,
-                          color:h.score>=50?"#ff3355":h.score>=20?"#ffd700":"#00ff88" }}>
-                          {h.score}/100</span>
+                    <div key={i} onClick={() => { setQuery(h.query); setManualType(null); setTab("scan"); }}
+                      style={{ background:"var(--surface)", border:"1px solid var(--border2)",
+                        borderRadius:8, padding:"12px 16px", cursor:"pointer" }}>
+                      <div className="ts-history-item">
+                        <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
+                          <Badge verdict={h.verdict}/>
+                          <span style={{ fontFamily:"var(--mono)", fontSize:12,
+                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{h.query}</span>
+                        </div>
+                        <div className="ts-history-meta">
+                          <span style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--text3)" }}>
+                            {(h.type||"auto").toUpperCase()}</span>
+                          <span style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--text3)" }}>{h.time}</span>
+                          <span style={{ fontFamily:"var(--mono)", fontSize:11,
+                            color:h.score>=50?"#ff3355":h.score>=20?"#ffd700":"#00ff88" }}>
+                            {h.score}/100</span>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -583,7 +566,6 @@ export default function App() {
             </div>
           )}
 
-          {/* About tab */}
           {tab === "about" && (
             <div style={{ animation:"fadeUp .3s ease", maxWidth:720 }}>
               <div style={{ fontFamily:"var(--mono)", fontSize:13, color:"var(--green)",
@@ -606,7 +588,7 @@ export default function App() {
           )}
         </main>
 
-        <footer style={{ borderTop:"1px solid var(--border)", padding:"16px 32px",
+        <footer style={{ borderTop:"1px solid var(--border)", padding:"16px 24px",
           textAlign:"center", fontFamily:"var(--mono)", fontSize:10,
           color:"var(--text3)", letterSpacing:1 }}>
           THREATSCAN · OPEN SOURCE · MIT LICENSE · MULTI-ENGINE THREAT INTELLIGENCE
