@@ -2,12 +2,14 @@ const axios = require("axios");
 const BASE = "https://otx.alienvault.com/api/v1";
 const KEY  = () => process.env.OTX_KEY;
 const headers = () => ({ "X-OTX-API-KEY": KEY() });
-const TIMEOUT = { timeout: 8000 };
+
+// FIX 1: Increased timeout from 8s to 15s — OTX free tier is slow
+const TIMEOUT = { timeout: 15000 };
 
 async function scanIp(ip) {
   try {
     const [general, rep] = await Promise.all([
-      axios.get(`${BASE}/indicators/IPv4/${ip}/general`, { headers: headers(), ...TIMEOUT }),
+      axios.get(`${BASE}/indicators/IPv4/${ip}/general`,    { headers: headers(), ...TIMEOUT }),
       axios.get(`${BASE}/indicators/IPv4/${ip}/reputation`, { headers: headers(), ...TIMEOUT }),
     ]);
     const pulses = general.data.pulse_info?.count ?? 0;
@@ -18,7 +20,11 @@ async function scanIp(ip) {
       country:    general.data.country_name,
       indicators: general.data.pulse_info?.pulses?.slice(0,3).map(p => p.name) ?? [],
     };
-  } catch { return { verdict: "clean", detail: "OTX timeout or error" }; }
+  } catch (e) {
+    // FIX 2: Return "error" with a real message instead of silently returning "clean"
+    const msg = e.code === "ECONNABORTED" ? "otx timeout" : "otx error";
+    return { verdict: "error", detail: msg };
+  }
 }
 
 async function scanDomain(domain) {
@@ -31,14 +37,20 @@ async function scanDomain(domain) {
       pulses,
       indicators: res.data.pulse_info?.pulses?.slice(0,3).map(p => p.name) ?? [],
     };
-  } catch { return { verdict: "clean", detail: "OTX timeout or error" }; }
+  } catch (e) {
+    const msg = e.code === "ECONNABORTED" ? "otx timeout" : "otx error";
+    return { verdict: "error", detail: msg };
+  }
 }
 
 async function scanUrl(url) {
   try {
     const hostname = new URL(url).hostname;
     return scanDomain(hostname);
-  } catch { return { verdict: "clean" }; }
+  } catch (e) {
+    const msg = e.code === "ECONNABORTED" ? "otx timeout" : "otx error";
+    return { verdict: "error", detail: msg };
+  }
 }
 
 async function scanHash(hash) {
@@ -52,7 +64,10 @@ async function scanHash(hash) {
       malware:    res.data.malware_families?.[0]?.display_name ?? null,
       indicators: res.data.pulse_info?.pulses?.slice(0,3).map(p => p.name) ?? [],
     };
-  } catch { return { verdict: "clean", detail: "OTX timeout or error" }; }
+  } catch (e) {
+    const msg = e.code === "ECONNABORTED" ? "otx timeout" : "otx error";
+    return { verdict: "error", detail: msg };
+  }
 }
 
 module.exports = { scanIp, scanDomain, scanUrl, scanHash };
