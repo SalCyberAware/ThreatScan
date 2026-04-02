@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 const Styles = () => (
   <style>{`
@@ -55,6 +55,27 @@ const TYPES = [
   { id:"hash",   label:"File Hash",    placeholder:"SHA256 / MD5 / SHA1"                      },
   { id:"domain", label:"Domain",       placeholder:"malware-domain.example"                   },
 ];
+
+// ─── FIX: Client-side type detection (mirrors backend detect.js) ──────────────
+// This runs on every keystroke so the correct tab is always highlighted,
+// and more importantly, the correct type is sent to the backend on scan.
+const IP_RE      = /^(\d{1,3}\.){3}\d{1,3}$|^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
+const MD5_RE     = /^[a-fA-F0-9]{32}$/;
+const SHA1_RE    = /^[a-fA-F0-9]{40}$/;
+const SHA256_RE  = /^[a-fA-F0-9]{64}$/;
+const URL_RE     = /^https?:\/\/.+/i;
+const DOMAIN_RE  = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+
+function detectInputType(q) {
+  if (!q || !q.trim()) return "auto";
+  const s = q.trim();
+  if (URL_RE.test(s))    return "url";
+  if (IP_RE.test(s))     return "ip";
+  if (MD5_RE.test(s) || SHA1_RE.test(s) || SHA256_RE.test(s)) return "hash";
+  if (DOMAIN_RE.test(s)) return "domain";
+  return "auto";
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 const Badge = ({ verdict, size="sm" }) => {
   const MAP = {
@@ -173,6 +194,7 @@ const EngineCard = ({ engineId, data, status }) => {
 export default function App() {
   const [query,      setQuery]      = useState("");
   const [type,       setType]       = useState("auto");
+  const [userPickedType, setUserPickedType] = useState(false); // tracks manual tab selection
   const [scanning,   setScanning]   = useState(false);
   const [engineData, setEngineData] = useState({});
   const [engineStatus, setEngineStatus] = useState({});
@@ -187,10 +209,44 @@ export default function App() {
   const inputRef = useRef();
   const esSrc    = useRef(null);
 
+  // ─── FIX: Auto-detect type as user types ────────────────────────────────────
+  // Only auto-switch if the user hasn't manually clicked a type tab.
+  // Resets to auto when the input is cleared.
+  useEffect(() => {
+    if (userPickedType) return; // user explicitly chose a type — respect that
+    if (!query.trim()) {
+      setType("auto");
+      return;
+    }
+    const detected = detectInputType(query.trim());
+    setType(detected);
+  }, [query, userPickedType]);
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const handleTypeClick = (typeId) => {
+    setType(typeId);
+    setUserPickedType(typeId !== "auto"); // clicking Auto-detect re-enables auto-switching
+  };
+
+  const handleQueryChange = (e) => {
+    setQuery(e.target.value);
+    // If the user starts typing something new, let auto-detect take over again
+    if (userPickedType && !e.target.value.trim()) {
+      setUserPickedType(false);
+    }
+  };
+
   const handleScan = () => {
     if (!query.trim() || scanning) return;
 
-    // Reset state
+    // ── FIX: Always resolve the true type at scan time ───────────────────────
+    // Even if auto-detect lagged or userPickedType is set to something wrong,
+    // we re-detect here so the backend always gets the correct type.
+    const resolvedType = (type === "auto" || !type)
+      ? detectInputType(query.trim())
+      : type;
+    // ─────────────────────────────────────────────────────────────────────────
+
     setScanning(true);
     setEngineData({});
     setEngineStatus({});
@@ -198,17 +254,15 @@ export default function App() {
     setProgress(0);
     setError(null);
 
-    // Initialize all engines as scanning
     const initStatus = {};
     ENGINE_ORDER.forEach(id => { initStatus[id] = "scanning"; });
     setEngineStatus(initStatus);
 
-    // Close any existing SSE connection
     if (esSrc.current) esSrc.current.close();
 
     const params = new URLSearchParams({
       query: query.trim(),
-      ...(type !== "auto" ? { type } : {})
+      type: resolvedType,   // always send explicit resolved type — never "auto"
     });
 
     const url = `${BACKEND}/scan/stream?${params}`;
@@ -234,7 +288,7 @@ export default function App() {
       es.close();
 
       const newHistory = [
-        { query: query.trim(), type: data.type || type, verdict: data.verdict,
+        { query: query.trim(), type: resolvedType, verdict: data.verdict,
           score: data.score, time: new Date().toLocaleTimeString() },
         ...history.slice(0, 19)
       ];
@@ -252,9 +306,12 @@ export default function App() {
   const doneCount = Object.values(engineStatus).filter(s => s === "done").length;
   const progressPct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
 
-  const malCount  = Object.values(engineData).filter(r => r.verdict === "malicious").length;
-  const suspCount = Object.values(engineData).filter(r => r.verdict === "suspicious").length;
+  const malCount   = Object.values(engineData).filter(r => r.verdict === "malicious").length;
+  const suspCount  = Object.values(engineData).filter(r => r.verdict === "suspicious").length;
   const cleanCount = Object.values(engineData).filter(r => r.verdict === "clean").length;
+
+  // Derive the label shown in the tab for display purposes
+  const displayedType = query.trim() ? type : "auto";
 
   return (
     <>
@@ -317,16 +374,28 @@ export default function App() {
 
             {/* Type selector */}
             <div style={{ display:"flex", gap:6, justifyContent:"center", flexWrap:"wrap", marginBottom:16 }}>
-              {TYPES.map(t => (
-                <button key={t.id} onClick={() => setType(t.id)} style={{
-                  background: type===t.id ? "var(--green)":"var(--surface2)",
-                  color:      type===t.id ? "#000":"var(--text2)",
-                  border:`1px solid ${type===t.id?"var(--green)":"var(--border2)"}`,
-                  padding:"6px 14px", borderRadius:6, cursor:"pointer",
-                  fontFamily:"var(--mono)", fontSize:11, letterSpacing:1,
-                  fontWeight:type===t.id?700:400, transition:"all .15s"
-                }}>{t.label}</button>
-              ))}
+              {TYPES.map(t => {
+                const isActive = displayedType === t.id;
+                const isAutoDetected = !userPickedType && t.id === displayedType && t.id !== "auto";
+                return (
+                  <button key={t.id} onClick={() => handleTypeClick(t.id)} style={{
+                    background: isActive ? "var(--green)":"var(--surface2)",
+                    color:      isActive ? "#000":"var(--text2)",
+                    border:`1px solid ${isActive ? "var(--green)" : isAutoDetected ? "var(--green)40" : "var(--border2)"}`,
+                    padding:"6px 14px", borderRadius:6, cursor:"pointer",
+                    fontFamily:"var(--mono)", fontSize:11, letterSpacing:1,
+                    fontWeight:isActive?700:400, transition:"all .15s",
+                    // Subtle pulse on auto-detected tab to signal it switched automatically
+                    boxShadow: isAutoDetected ? "0 0 8px rgba(0,255,136,.15)" : "none",
+                  }}>
+                    {t.label}
+                    {/* Show a small dot when this tab was auto-detected */}
+                    {isAutoDetected && (
+                      <span style={{ marginLeft:5, fontSize:8, opacity:.7 }}>●</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Search bar */}
@@ -335,9 +404,9 @@ export default function App() {
                 overflow:"hidden", background:"var(--surface)",
                 animation: scanning ? "borderGlow 2s ease-in-out infinite":"none" }}>
                 <input ref={inputRef} value={query}
-                  onChange={e => setQuery(e.target.value)}
+                  onChange={handleQueryChange}
                   onKeyDown={e => e.key==="Enter" && handleScan()}
-                  placeholder={TYPES.find(t=>t.id===type)?.placeholder}
+                  placeholder={TYPES.find(t => t.id === displayedType)?.placeholder || TYPES[0].placeholder}
                   style={{ flex:1, background:"none", border:"none", padding:"16px",
                     color:"var(--text)", fontSize:14, fontFamily:"var(--mono)" }}
                 />
@@ -381,7 +450,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Summary card — appears when first results come in */}
+            {/* Summary card */}
             {(scanning || summary) && doneCount > 0 && (
               <div style={{ background:"var(--surface)", borderRadius:12, padding:28,
                 border:`1px solid ${
@@ -426,7 +495,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Engine grid — shows all engines, updates as results stream in */}
+            {/* Engine grid */}
             {Object.keys(engineStatus).length > 0 && (
               <div style={{ display:"grid",
                 gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:12 }}>
@@ -451,7 +520,11 @@ export default function App() {
                 <div style={{ marginTop:20, display:"flex", gap:10,
                   justifyContent:"center", flexWrap:"wrap" }}>
                   {["https://example.com","8.8.8.8","44d88612fea8a8f36de82e1278abb02f","malware.xyz"].map(ex => (
-                    <button key={ex} onClick={() => { setQuery(ex); inputRef.current?.focus(); }} style={{
+                    <button key={ex} onClick={() => {
+                      setQuery(ex);
+                      setUserPickedType(false); // let auto-detect pick the type
+                      inputRef.current?.focus();
+                    }} style={{
                       background:"var(--surface)", border:"1px solid var(--border2)",
                       color:"var(--text2)", padding:"7px 12px", borderRadius:6,
                       cursor:"pointer", fontFamily:"var(--mono)", fontSize:10
@@ -482,8 +555,12 @@ export default function App() {
               ) : (
                 <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                   {history.map((h, i) => (
-                    <div key={i} onClick={() => { setQuery(h.query); setType(h.type||"auto"); setTab("scan"); }}
-                      style={{ background:"var(--surface)", border:"1px solid var(--border2)",
+                    <div key={i} onClick={() => {
+                      setQuery(h.query);
+                      setType(h.type || "auto");
+                      setUserPickedType(h.type && h.type !== "auto");
+                      setTab("scan");
+                    }} style={{ background:"var(--surface)", border:"1px solid var(--border2)",
                         borderRadius:8, padding:"12px 16px", cursor:"pointer",
                         display:"flex", alignItems:"center", justifyContent:"space-between",
                         flexWrap:"wrap", gap:8 }}>
