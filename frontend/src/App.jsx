@@ -243,6 +243,20 @@ const EngineCard = ({ engineId, data, status }) => {
           {data.aRecords?.length   > 0 && <span style={{width:"100%"}}>A Records: <b style={{color:"var(--text)"}}>{data.aRecords.join(", ")}</b></span>}
           {data.mxRecords?.length  > 0 && <span style={{width:"100%"}}>MX: <b style={{color:"var(--text)"}}>{data.mxRecords.join(", ")}</b></span>}
           {data.nameservers?.length > 0 && <span style={{width:"100%"}}>NS: <b style={{color:"var(--text)"}}>{data.nameservers.join(", ")}</b></span>}
+          {data.screenshot && (
+            <a href={data.screenshot} target="_blank" rel="noopener noreferrer"
+              style={{ width:"100%", marginTop:8, display:"block" }}>
+              <img src={data.screenshot} alt="URLScan screenshot"
+                style={{ width:"100%", borderRadius:6, border:"1px solid var(--border2)",
+                  maxHeight:160, objectFit:"cover", cursor:"pointer",
+                  transition:"opacity .2s", opacity:.85 }}
+                onMouseOver={e => e.target.style.opacity=1}
+                onMouseOut={e => e.target.style.opacity=.85}
+              />
+              <div style={{ fontFamily:"var(--mono)", fontSize:9, color:"var(--text3)",
+                marginTop:4, textAlign:"center" }}>Click to open full screenshot ↗</div>
+            </a>
+          )}
         </div>
       )}
     </div>
