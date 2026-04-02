@@ -106,7 +106,7 @@ const ENGINE_META = {
   otx:           { name:"AlienVault OTX",   icon:"👽" },
   greynoise:     { name:"GreyNoise",         icon:"📡" },
   ipinfo:        { name:"IPInfo",            icon:"🌐" },
-  phishtank:     { name:"PhishTank",         icon:"🎣" },
+  urlhaus:       { name:"URLhaus",           icon:"🕷" },
   safebrowsing:  { name:"Google SafeBrowse", icon:"🔒" },
   threatfox:     { name:"ThreatFox",         icon:"🦊" },
 };
