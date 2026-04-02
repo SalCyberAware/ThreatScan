@@ -1,15 +1,22 @@
 /**
  * URLhaus Engine (abuse.ch)
- * Free, no API key required.
+ * Free with auth key from bazaar.abuse.ch
  */
 const axios = require("axios");
 const BASE    = "https://urlhaus-api.abuse.ch/v1";
+const KEY     = () => process.env.URLHAUS_KEY;
 const TIMEOUT = { timeout: 8000 };
+
+function buildParams(base) {
+  // FIX: Include auth_key if available — required since abuse.ch added authentication
+  if (KEY()) base.auth_key = KEY();
+  return new URLSearchParams(base).toString();
+}
 
 async function scanUrl(url) {
   try {
     const res = await axios.post(`${BASE}/url/`,
-      `url=${encodeURIComponent(url)}`,
+      buildParams({ url }),
       { headers: { "Content-Type": "application/x-www-form-urlencoded" }, ...TIMEOUT });
     const d = res.data;
 
@@ -36,7 +43,6 @@ async function scanUrl(url) {
     return { verdict: "info", detail: `URLhaus status: ${d.query_status}` };
 
   } catch (err) {
-    // FIX: Show actual error instead of generic "lookup failed"
     const msg = err.response?.status
       ? `URLhaus HTTP ${err.response.status}`
       : err.code === "ECONNABORTED" ? "URLhaus timeout"
@@ -48,7 +54,7 @@ async function scanUrl(url) {
 async function scanDomain(domain) {
   try {
     const res = await axios.post(`${BASE}/host/`,
-      `host=${encodeURIComponent(domain)}`,
+      buildParams({ host: domain }),
       { headers: { "Content-Type": "application/x-www-form-urlencoded" }, ...TIMEOUT });
     const d = res.data;
 
@@ -79,7 +85,7 @@ async function scanHash(hash) {
 
   try {
     const res = await axios.post(`${BASE}/payload/`,
-      `sha256_hash=${hash}`,
+      buildParams({ sha256_hash: hash }),
       { headers: { "Content-Type": "application/x-www-form-urlencoded" }, ...TIMEOUT });
     const d = res.data;
 
