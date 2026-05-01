@@ -8,8 +8,7 @@ const KEY     = () => process.env.URLHAUS_KEY;
 const TIMEOUT = { timeout: 8000 };
 
 function buildParams(base) {
-  // FIX: Include auth_key if available — required since abuse.ch added authentication
-  if (KEY()) base.auth_key = KEY();
+  // Auth key optional for URL lookups — URLhaus rate limits keyed requests
   return new URLSearchParams(base).toString();
 }
 
