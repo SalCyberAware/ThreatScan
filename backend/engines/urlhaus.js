@@ -1,6 +1,6 @@
 /**
  * URLhaus Engine (abuse.ch)
- * Free with auth key from bazaar.abuse.ch
+ * Free public lookups - rate limited
  */
 const axios = require("axios");
 const BASE    = "https://urlhaus-api.abuse.ch/v1";
@@ -12,16 +12,24 @@ function buildParams(base) {
   return new URLSearchParams(base).toString();
 }
 
+function handleError(err) {
+  if (err.response?.status === 401 || err.response?.status === 403) {
+    return { verdict: "info", detail: "URLhaus: service temporarily unavailable" };
+  }
+  if (err.code === "ECONNABORTED") {
+    return { verdict: "info", detail: "URLhaus timeout" };
+  }
+  return { verdict: "info", detail: `URLhaus error: ${err.message?.slice(0, 80)}` };
+}
+
 async function scanUrl(url) {
   try {
     const res = await axios.post(`${BASE}/url/`,
       buildParams({ url }),
       { headers: { "Content-Type": "application/x-www-form-urlencoded" }, ...TIMEOUT });
     const d = res.data;
-
     if (d.query_status === "no_results")
       return { verdict: "clean", detail: "Not found in URLhaus" };
-
     if (d.query_status === "is_page" || d.url_status === "online") {
       return {
         verdict: "malicious",
@@ -30,7 +38,6 @@ async function scanUrl(url) {
         malware: d.payloads?.[0]?.filename || null,
       };
     }
-
     if (d.url_status === "offline") {
       return {
         verdict: "suspicious",
@@ -38,15 +45,9 @@ async function scanUrl(url) {
         tags:    d.tags || [],
       };
     }
-
     return { verdict: "info", detail: `URLhaus status: ${d.query_status}` };
-
   } catch (err) {
-    const msg = err.response?.status
-      ? `URLhaus HTTP ${err.response.status}`
-      : err.code === "ECONNABORTED" ? "URLhaus timeout"
-      : `URLhaus error: ${err.message?.slice(0, 80)}`;
-    return { verdict: "info", detail: msg };
+    return handleError(err);
   }
 }
 
@@ -56,54 +57,38 @@ async function scanDomain(domain) {
       buildParams({ host: domain }),
       { headers: { "Content-Type": "application/x-www-form-urlencoded" }, ...TIMEOUT });
     const d = res.data;
-
     if (d.query_status === "no_results")
       return { verdict: "clean", detail: "Not found in URLhaus" };
-
     const urlCount = d.urls?.length || 0;
     const online   = d.urls?.filter(u => u.url_status === "online").length || 0;
-
     return {
       verdict: online > 0 ? "malicious" : "suspicious",
       detail:  `${urlCount} malicious URLs — ${online} currently online`,
       tags:    [...new Set(d.urls?.flatMap(u => u.tags || []))].slice(0, 5),
     };
-
   } catch (err) {
-    const msg = err.response?.status
-      ? `URLhaus HTTP ${err.response.status}`
-      : err.code === "ECONNABORTED" ? "URLhaus timeout"
-      : `URLhaus error: ${err.message?.slice(0, 80)}`;
-    return { verdict: "info", detail: msg };
+    return handleError(err);
   }
 }
 
 async function scanHash(hash) {
   if (hash.length !== 64)
     return { verdict: "info", detail: "URLhaus supports SHA256 only" };
-
   try {
     const res = await axios.post(`${BASE}/payload/`,
       buildParams({ sha256_hash: hash }),
       { headers: { "Content-Type": "application/x-www-form-urlencoded" }, ...TIMEOUT });
     const d = res.data;
-
     if (d.query_status === "no_results")
       return { verdict: "clean", detail: "Not found in URLhaus" };
-
     return {
       verdict: "malicious",
       detail:  `Malware: ${d.file_type || "unknown"} — ${d.urls_count || 0} distribution URLs`,
       malware: d.signature || null,
       tags:    d.tags || [],
     };
-
   } catch (err) {
-    const msg = err.response?.status
-      ? `URLhaus HTTP ${err.response.status}`
-      : err.code === "ECONNABORTED" ? "URLhaus timeout"
-      : `URLhaus error: ${err.message?.slice(0, 80)}`;
-    return { verdict: "info", detail: msg };
+    return handleError(err);
   }
 }
 
