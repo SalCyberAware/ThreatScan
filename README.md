@@ -27,7 +27,7 @@ ThreatScan is a free, open-source alternative to VirusTotal. Instead of sending 
 ## Features
 
 - ⚡ **Live streaming results** — Server-Sent Events stream each engine result as it arrives
-- 🔬 **11 engines** — VirusTotal, AbuseIPDB, URLScan, MalwareBazaar, AlienVault OTX, GreyNoise, IPInfo, PhishTank, Google SafeBrowse, ThreatFox, WHOIS/DNS
+- 🔬 **11 engines** — VirusTotal, AbuseIPDB, URLScan, MalwareBazaar, AlienVault OTX, GreyNoise, IPInfo, URLhaus, Google SafeBrowse, ThreatFox, WHOIS/DNS
 - 📁 **File upload** — drag & drop any file, hashed locally with SHA256 (file never leaves your device)
 - ⚡ **Bulk scan** — paste up to 20 URLs, IPs, or domains and scan them all at once with CSV export
 - 🌍 **WHOIS + DNS** — registrar, creation date, expiry, A/MX/NS records for any domain
@@ -55,11 +55,11 @@ ThreatScan is a free, open-source alternative to VirusTotal. Instead of sending 
 | VirusTotal | URL, IP, Domain, Hash | 500/day | ✅ |
 | AbuseIPDB | IP | 1,000/day | ✅ |
 | URLScan.io | URL, Domain | 1,000/day | ✅ |
-| MalwareBazaar | Hash | Unlimited | ❌ |
+| MalwareBazaar | Hash | Unlimited | ✅ |
 | AlienVault OTX | All | Unlimited | ✅ |
 | GreyNoise | IP | 1,000/day | ✅ |
 | IPInfo | IP | 50,000/month | ✅ |
-| URLhaus (abuse.ch) | URL, Domain, Hash | Unlimited | ❌ |
+| URLhaus (abuse.ch) | URL, Domain, Hash | Unlimited | ✅ |
 | Google SafeBrowse | URL, Domain | 10,000/day | ✅ |
 | ThreatFox | All | Unlimited | ❌ |
 | WHOIS / DNS | URL, Domain | Unlimited | ❌ |
@@ -103,7 +103,8 @@ All keys are free. Get them here:
 | `OTX_KEY` | [otx.alienvault.com](https://otx.alienvault.com) → Settings → OTX Key |
 | `GREYNOISE_KEY` | [greynoise.io](https://greynoise.io) → Account → API |
 | `IPINFO_KEY` | [ipinfo.io](https://ipinfo.io) → Token |
-| `PHISHTANK_KEY` | [phishtank.org](https://phishtank.org) → Register |
+| `MALWAREBAZAAR_KEY` | [bazaar.abuse.ch](https://bazaar.abuse.ch) → Profile → Generate Key |
+| `URLHAUS_KEY` | [bazaar.abuse.ch](https://bazaar.abuse.ch) → Profile → Generate Key (same as MalwareBazaar) |
 | `GSB_KEY` | [console.cloud.google.com](https://console.cloud.google.com) → Safe Browsing API |
 
 ---
@@ -148,7 +149,7 @@ threat-scan.vercel.app    →    Port 4000
                         │  otx.js                │
                         │  greynoise.js          │
                         │  ipinfo.js             │
-                        │  phishtank.js          │
+                        │  urlhaus.js            │
                         │  safebrowsing.js       │
                         │  threatfox.js          │
                         │  whois.js              │
