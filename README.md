@@ -12,6 +12,10 @@ Scan URLs, IPs, file hashes & domains across **11 live security engines** simult
 [![Frontend on Vercel](https://img.shields.io/badge/Frontend-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com)
 
 
+<div align="center">
+
+![ThreatScan Screenshot](threatscan-screenshot.png)
+
 </div>
 
 ---
