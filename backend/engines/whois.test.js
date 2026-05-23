@@ -49,6 +49,28 @@ describe("whois.scanDomain", () => {
     expect(result.registrar).toBeUndefined();
   });
 
+  test("partial success — whois succeeds, DNS A fails, MX succeeds", async () => {
+    axios.get
+      .mockResolvedValueOnce({ data: { registrar: "Namecheap" } })
+      .mockRejectedValueOnce(new Error("dns A timeout"))
+      .mockResolvedValueOnce({ data: { Answer: [{ data: "5 mx.example.com" }] } });
+    const result = await whois.scanDomain("example.com");
+    expect(result.verdict).toBe("info");
+    expect(result.registrar).toBe("Namecheap");
+    expect(result.aRecords).toBeUndefined();
+    expect(result.mxRecords).toEqual(["5 mx.example.com"]);
+  });
+
+  test("DNS responses with no Answer field default to empty arrays", async () => {
+    axios.get
+      .mockResolvedValueOnce({ data: { registrar: "X" } })
+      .mockResolvedValueOnce({ data: {} })
+      .mockResolvedValueOnce({ data: {} });
+    const result = await whois.scanDomain("example.com");
+    expect(result.aRecords).toEqual([]);
+    expect(result.mxRecords).toEqual([]);
+  });
+
   test("calls are sequential in the documented order (whois → A → MX)", async () => {
     axios.get
       .mockResolvedValueOnce({ data: {} })

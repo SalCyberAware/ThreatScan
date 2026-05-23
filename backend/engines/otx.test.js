@@ -114,6 +114,13 @@ describe("otx.scanHash", () => {
     expect(result.malware).toBe("Emotet");
   });
 
+  test("returns malware=null when malware_families is missing", async () => {
+    axios.get.mockResolvedValueOnce({ data: { pulse_info: { count: 2 } } });
+    const result = await otx.scanHash("abc");
+    expect(result.verdict).toBe("malicious");
+    expect(result.malware).toBeNull();
+  });
+
   test("returns 'clean' when pulses == 0", async () => {
     axios.get.mockResolvedValueOnce({ data: { pulse_info: { count: 0 } } });
     expect((await otx.scanHash("abc")).verdict).toBe("clean");

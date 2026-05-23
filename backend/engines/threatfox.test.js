@@ -69,4 +69,14 @@ describe("threatfox.scanUrl + scanDomain", () => {
     expect(result.verdict).toBe("malicious");
     expect(result.malware).toBe("Emotet");
   });
+
+  test("scanUrl returns malware=null when ioc has no malware field", async () => {
+    axios.post.mockResolvedValueOnce({ data: {
+      query_status: "ok",
+      data: [{ ioc: "http://x.com", confidence_level: 50 }],
+    } });
+    const result = await tf.scanUrl("http://x.com");
+    expect(result.verdict).toBe("malicious");
+    expect(result.malware).toBeNull();
+  });
 });
