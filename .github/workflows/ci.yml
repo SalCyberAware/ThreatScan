@@ -24,9 +24,17 @@ jobs:
         run: npm ci
         working-directory: backend
 
-      - name: Run tests
-        run: npm test
+      - name: Run tests with coverage
+        run: npm run test:coverage
         working-directory: backend
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+          if-no-files-found: warn
 
       - name: Check for syntax errors
         run: node --check server.js
