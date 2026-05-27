@@ -27,7 +27,9 @@
   },
   "jest": {
     "testEnvironment": "node",
+    "forceExit": true,
     "collectCoverageFrom": [
+      "server.js",
       "engines/*.js",
       "utils/*.js",
       "!**/*.test.js",
