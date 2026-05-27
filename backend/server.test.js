@@ -402,15 +402,11 @@ describe("GET /api/scan/bulk — query parsing", () => {
     expect(events.filter(e => e.event === "result")).toHaveLength(2);
   });
 
-  test("more than 20 queries are sliced to 20 (the server does NOT 400 on overflow)", async () => {
+  test("returns 400 when more than 20 queries are submitted", async () => {
     const queries = Array.from({ length: 21 }, (_, i) => `q${i}.example`).join(",");
     const res = await request(app).get("/api/scan/bulk").query({ queries });
-    expect(res.status).toBe(200);
-
-    const events = parseSSE(res.text);
-    expect(events[0].data.total).toBe(20);
-    expect(events[0].data.queries).toHaveLength(20);
-    expect(events.filter(e => e.event === "result")).toHaveLength(20);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/maximum 20.*received 21/i);
   });
 });
 

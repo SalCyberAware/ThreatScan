@@ -266,10 +266,16 @@ app.get("/api/scan/bulk", bulkRateLimit, async (req, res) => {
 
   const queries = [...new Set(
     raw.split(/[\n,]+/).map(q => sanitizeQuery(q)).filter(Boolean)
-  )].slice(0, 20);
+  )];
 
   if (queries.length === 0)
     return res.status(400).json({ error: "No valid queries found" });
+
+  if (queries.length > 20) {
+    return res.status(400).json({
+      error: `Maximum 20 queries per request (received ${queries.length})`
+    });
+  }
 
   res.setHeader("Content-Type",  "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
