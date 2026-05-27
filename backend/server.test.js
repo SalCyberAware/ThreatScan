@@ -410,6 +410,32 @@ describe("GET /api/scan/bulk — query parsing", () => {
   });
 });
 
+describe("CORS origin rejection", () => {
+  // Note: allowedOrigins is computed at module load (server.js:118), so setting
+  // FRONTEND_URL here has no effect. The default allowlist is ["http://localhost:5173"],
+  // so any other Origin combined with NODE_ENV=production triggers the rejection branch.
+  const savedNodeEnv = process.env.NODE_ENV;
+  let errorSpy;
+
+  beforeEach(() => {
+    errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    if (savedNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = savedNodeEnv;
+    errorSpy.mockRestore();
+  });
+
+  test("disallowed Origin in production is rejected by the cors middleware (500)", async () => {
+    process.env.NODE_ENV = "production";
+    const res = await request(app)
+      .get("/api/health")
+      .set("Origin", "https://evil.example.com");
+    expect(res.status).toBe(500);
+  });
+});
+
 describe("GET /api/scan/stream — skipped engine when API key is absent", () => {
   test("missing VT_API_KEY emits a 'skipped' engine event and does not call the engine", async () => {
     delete process.env.VT_API_KEY;
