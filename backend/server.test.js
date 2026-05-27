@@ -49,6 +49,22 @@ function resetEngines(defaultResult = { verdict: "clean" }) {
   }
 }
 
+function parseSSE(text) {
+  return text
+    .split("\n\n")
+    .map(block => block.trim())
+    .filter(Boolean)
+    .map(block => {
+      let event = "message";
+      let data = null;
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event: ")) event = line.slice(7);
+        else if (line.startsWith("data: ")) data = JSON.parse(line.slice(6));
+      }
+      return { event, data };
+    });
+}
+
 beforeEach(() => {
   cache.clear();
   resetEngines();
@@ -227,5 +243,191 @@ describe("calcScore", () => {
       { id: "threatfox",  verdict: "clean"     },
       { id: "ipinfo",     verdict: "clean"     },
     ])).toBe(50);
+  });
+});
+
+describe("GET /api/scan/stream — validation", () => {
+  test("returns 400 when the query parameter is missing", async () => {
+    const res = await request(app).get("/api/scan/stream");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid|missing/i);
+  });
+
+  test("returns 400 (before opening the stream) when the type cannot be detected", async () => {
+    const res = await request(app).get("/api/scan/stream").query({ query: "not-an-indicator" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/detect/i);
+  });
+});
+
+describe("GET /api/scan/stream — event sequence", () => {
+  test("emits start → 11 engine events → done in that order", async () => {
+    const res = await request(app).get("/api/scan/stream").query({ query: "https://example.com" });
+    expect(res.status).toBe(200);
+
+    const events = parseSSE(res.text);
+    expect(events[0].event).toBe("start");
+    expect(events[0].data).toMatchObject({
+      query: "https://example.com",
+      type: "url",
+      total: 11,
+      cached: false,
+    });
+
+    const engineEvents = events.filter(e => e.event === "engine");
+    expect(engineEvents).toHaveLength(11);
+    const ids = engineEvents.map(e => e.data.id);
+    expect(new Set(ids)).toEqual(new Set(ENGINE_NAMES));
+
+    const last = events[events.length - 1];
+    expect(last.event).toBe("done");
+  });
+
+  test("each engine event carries an id and a verdict", async () => {
+    const res = await request(app).get("/api/scan/stream").query({ query: "https://example.com" });
+    const engineEvents = parseSSE(res.text).filter(e => e.event === "engine");
+    for (const e of engineEvents) {
+      expect(typeof e.data.id).toBe("string");
+      expect(typeof e.data.verdict).toBe("string");
+    }
+  });
+
+  test("done event payload includes verdict, score, counts, and scannedAt", async () => {
+    for (const name of ENGINE_NAMES) {
+      engines[name].scanUrl.mockResolvedValue({ verdict: "malicious" });
+    }
+    const res = await request(app).get("/api/scan/stream").query({ query: "https://example.com" });
+    const doneEvent = parseSSE(res.text).find(e => e.event === "done");
+    expect(doneEvent.data).toMatchObject({
+      verdict: "malicious",
+      score: 100,
+      malicious: expect.any(Number),
+      suspicious: expect.any(Number),
+      clean: expect.any(Number),
+      cached: false,
+      scannedAt: expect.any(String),
+    });
+  });
+});
+
+describe("GET /api/scan/stream — cache replay", () => {
+  test("second identical request replays from cache without re-calling engines", async () => {
+    await request(app).get("/api/scan/stream").query({ query: "https://example.com" });
+    const callCount = engines.virustotal.scanUrl.mock.calls.length;
+    expect(callCount).toBe(1);
+
+    const res = await request(app).get("/api/scan/stream").query({ query: "https://example.com" });
+    const events = parseSSE(res.text);
+    expect(events[0].data.cached).toBe(true);
+    const doneEvent = events.find(e => e.event === "done");
+    expect(doneEvent.data.cached).toBe(true);
+    expect(events.filter(e => e.event === "engine")).toHaveLength(11);
+    expect(engines.virustotal.scanUrl.mock.calls.length).toBe(callCount);
+  });
+});
+
+describe("GET /api/scan/stream — engine error handling", () => {
+  test("a rejecting engine produces an 'error' event; the stream still completes", async () => {
+    engines.virustotal.scanUrl.mockRejectedValue(new Error("VT API down"));
+    const res = await request(app).get("/api/scan/stream").query({ query: "https://example.com" });
+
+    const events = parseSSE(res.text);
+    const vtEvent = events.find(e => e.event === "engine" && e.data.id === "virustotal");
+    expect(vtEvent.data.verdict).toBe("error");
+    expect(typeof vtEvent.data.detail).toBe("string");
+
+    const doneEvent = events.find(e => e.event === "done");
+    expect(doneEvent).toBeDefined();
+    expect(events.filter(e => e.event === "engine")).toHaveLength(11);
+  });
+});
+
+// NOTE: the 30s GLOBAL_SCAN_TIMEOUT path is not exercised here.
+// Driving fake timers through a flushed SSE response under supertest is flaky;
+// the bail-out branch (lines 236-239 in server.js) is left for a dedicated unit test.
+
+describe("GET /api/scan/bulk — validation", () => {
+  test("returns 400 when the queries parameter is missing", async () => {
+    const res = await request(app).get("/api/scan/bulk");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/queries parameter required/i);
+  });
+
+  test("returns 400 when no valid queries can be parsed from the input", async () => {
+    const res = await request(app).get("/api/scan/bulk").query({ queries: ",,," });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/no valid queries/i);
+  });
+});
+
+describe("GET /api/scan/bulk — event sequence", () => {
+  test("emits start → progress+result per query → done", async () => {
+    const res = await request(app).get("/api/scan/bulk").query({ queries: "a.com,b.com,c.com" });
+    expect(res.status).toBe(200);
+
+    const events = parseSSE(res.text);
+    expect(events[0].event).toBe("start");
+    expect(events[0].data).toEqual({ total: 3, queries: ["a.com", "b.com", "c.com"] });
+
+    const progressEvents = events.filter(e => e.event === "progress");
+    const resultEvents   = events.filter(e => e.event === "result");
+    expect(progressEvents).toHaveLength(3);
+    expect(resultEvents).toHaveLength(3);
+
+    const doneEvent = events[events.length - 1];
+    expect(doneEvent.event).toBe("done");
+    expect(doneEvent.data.total).toBe(3);
+    expect(doneEvent.data.results).toHaveLength(3);
+  });
+
+  test("each result event carries query, type, verdict, and score", async () => {
+    const res = await request(app).get("/api/scan/bulk").query({ queries: "a.com" });
+    const result = parseSSE(res.text).find(e => e.event === "result");
+    expect(result.data).toMatchObject({
+      index: 0,
+      query: "a.com",
+      type: "domain",
+      verdict: expect.any(String),
+      score: expect.any(Number),
+    });
+  });
+});
+
+describe("GET /api/scan/bulk — query parsing", () => {
+  test("duplicate queries are de-duplicated before scanning", async () => {
+    const res = await request(app).get("/api/scan/bulk").query({ queries: "a.com,a.com,b.com" });
+    const events = parseSSE(res.text);
+    expect(events[0].data.total).toBe(2);
+    expect(events[0].data.queries).toEqual(["a.com", "b.com"]);
+    expect(events.filter(e => e.event === "result")).toHaveLength(2);
+  });
+
+  test("more than 20 queries are sliced to 20 (the server does NOT 400 on overflow)", async () => {
+    const queries = Array.from({ length: 21 }, (_, i) => `q${i}.example`).join(",");
+    const res = await request(app).get("/api/scan/bulk").query({ queries });
+    expect(res.status).toBe(200);
+
+    const events = parseSSE(res.text);
+    expect(events[0].data.total).toBe(20);
+    expect(events[0].data.queries).toHaveLength(20);
+    expect(events.filter(e => e.event === "result")).toHaveLength(20);
+  });
+});
+
+describe("GET /api/scan/bulk — cache reuse mid-batch", () => {
+  test("a query primed in the cache is replayed (cached: true), others are scanned", async () => {
+    await request(app).post("/api/scan").send({ query: "a.com" });
+    const callCount = engines.virustotal.scanDomain.mock.calls.length;
+    expect(callCount).toBe(1);
+
+    const res = await request(app).get("/api/scan/bulk").query({ queries: "a.com,b.com" });
+    const resultEvents = parseSSE(res.text).filter(e => e.event === "result");
+
+    const a = resultEvents.find(r => r.data.query === "a.com");
+    const b = resultEvents.find(r => r.data.query === "b.com");
+    expect(a.data.cached).toBe(true);
+    expect(b.data.cached).toBe(false);
+    expect(engines.virustotal.scanDomain.mock.calls.length).toBe(callCount + 1);
+    expect(engines.virustotal.scanDomain).toHaveBeenLastCalledWith("b.com");
   });
 });
