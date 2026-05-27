@@ -410,6 +410,45 @@ describe("GET /api/scan/bulk — query parsing", () => {
   });
 });
 
+describe("GET /api/scan/stream — skipped engine when API key is absent", () => {
+  test("missing VT_API_KEY emits a 'skipped' engine event and does not call the engine", async () => {
+    delete process.env.VT_API_KEY;
+    const res = await request(app).get("/api/scan/stream").query({ query: "https://example.com" });
+    const vt = parseSSE(res.text).find(e => e.event === "engine" && e.data.id === "virustotal");
+    expect(vt.data.verdict).toBe("skipped");
+    expect(vt.data.detail).toMatch(/no api key/i);
+    expect(engines.virustotal.scanUrl).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/scan/bulk — per-engine outcomes captured in cache", () => {
+  test("missing API key marks that engine 'skipped' for the bulk query", async () => {
+    delete process.env.VT_API_KEY;
+    const res = await request(app).get("/api/scan/bulk").query({ queries: "a.com" });
+    expect(res.status).toBe(200);
+
+    const cachedEngines = cache.get("domain:a.com").data.engines;
+    const vt = cachedEngines.find(e => e.id === "virustotal");
+    expect(vt.verdict).toBe("skipped");
+    expect(engines.virustotal.scanDomain).not.toHaveBeenCalled();
+  });
+
+  test("a rejecting engine yields verdict 'error' for that engine in the bulk cache", async () => {
+    engines.virustotal.scanDomain.mockRejectedValue(new Error("boom"));
+    const res = await request(app).get("/api/scan/bulk").query({ queries: "a.com" });
+    expect(res.status).toBe(200);
+
+    const events = parseSSE(res.text);
+    expect(events.find(e => e.event === "result")).toBeDefined();
+    expect(events.find(e => e.event === "done")).toBeDefined();
+
+    const cachedEngines = cache.get("domain:a.com").data.engines;
+    const vt = cachedEngines.find(e => e.id === "virustotal");
+    expect(vt.verdict).toBe("error");
+    expect(vt.detail).toMatch(/boom/i);
+  });
+});
+
 describe("GET /api/scan/bulk — cache reuse mid-batch", () => {
   test("a query primed in the cache is replayed (cached: true), others are scanned", async () => {
     await request(app).post("/api/scan").send({ query: "a.com" });
