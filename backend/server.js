@@ -407,6 +407,10 @@ app.post("/api/scan", scanRateLimit, async (req, res) => {
   res.json(result);
 });
 
-app.listen(PORT, () =>
-  console.log(`✅ ThreatScan backend running on http://localhost:${PORT}`)
-);
+if (require.main === module) {
+  app.listen(PORT, () =>
+    console.log(`✅ ThreatScan backend running on http://localhost:${PORT}`)
+  );
+}
+
+module.exports = { app, calcScore, _cache: cache };
