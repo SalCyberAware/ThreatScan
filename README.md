@@ -72,6 +72,26 @@ ThreatScan is a free, open-source alternative to VirusTotal. Instead of sending 
 
 ---
 
+## How ThreatScan compares
+
+ThreatScan is an aggregator built for analysts who don't want to paste an IOC into eleven different tabs. Honest comparison vs the established options:
+
+| Tool | Sources | Cost | Strengths | Where ThreatScan differs |
+|------|---------|------|-----------|--------------------------|
+| VirusTotal | 70+ AV engines, single platform | Free tier + paid | Massive AV coverage, file sandbox detonation | ThreatScan blends reputation, threat-feed, and ASN/WHOIS data — VirusTotal is included as one of 11 sources, not the whole story |
+| URLScan.io | Web crawler, single source | Free tier + paid | Deep page inspection, screenshots, DOM/HAR | ThreatScan calls URLScan alongside 10 other sources and surfaces the screenshot inline with the rest of the verdict |
+| AbuseIPDB | IP reputation, single source | Free tier + paid | Best-in-class community IP abuse reports | ThreatScan correlates AbuseIPDB with GreyNoise, IPInfo, OTX, and VirusTotal for a single weighted IP verdict |
+| MISP / OpenCTI | Self-hosted threat platforms | Free, self-hosted | Enterprise-grade IOC management, sharing communities | ThreatScan is zero-install (hosted demo, or one Railway + Vercel deploy) — no database, no schema, no operator |
+
+### When to use what
+
+- **Use VirusTotal** when you need deep file analysis or sandbox detonation of an actual binary.
+- **Use URLScan.io directly** when you need the full DOM tree, HAR file, or a fresh crawl of a specific URL.
+- **Use MISP/OpenCTI** when you need to manage, share, and persist IOCs across a team.
+- **Use ThreatScan** when you want one weighted verdict aggregated from 11 sources, streamed live as each engine responds, with bulk-IOC support (up to 20) and CSV export — the analyst triage workflow most single-source tools don't cover.
+
+---
+
 ## Quick Start (Local)
 
 ```bash
