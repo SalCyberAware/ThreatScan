@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useCallback } from "react";
 
 const Styles = () => (
   <style>{`
@@ -455,7 +455,6 @@ const BulkScan = () => {
 
 export default function App() {
   const [query,        setQuery]        = useState("");
-  const [detectedType, setDetectedType] = useState("auto");
   const [manualType,   setManualType]   = useState(null);
   const [scanning,     setScanning]     = useState(false);
   const [engineData,   setEngineData]   = useState({});
@@ -474,13 +473,17 @@ export default function App() {
   const fileRef  = useRef();
   const esSrc    = useRef(null);
 
-  useEffect(() => {
-    setDetectedType(detectInputType(query));
+  const detectedType = detectInputType(query);
+  const activeType   = manualType || detectedType;
+
+  // Entering a query by hand drops any manual type override and any file picked
+  // earlier. This lives here rather than in an effect on [query] so that
+  // processFile, which sets the query itself, keeps the file info it just wrote.
+  const updateQuery = (value) => {
+    setQuery(value);
     setManualType(null);
     setFileInfo(null);
-  }, [query]);
-
-  const activeType = manualType || detectedType;
+  };
 
   const processFile = useCallback(async (file) => {
     if (!file) return;
@@ -631,7 +634,7 @@ export default function App() {
             <div style={{ marginBottom:8 }}>
               <div className="ts-search-bar" style={{ animation: scanning ? "borderGlow 2s ease-in-out infinite":"none" }}>
                 <input ref={inputRef} value={query}
-                  onChange={e => setQuery(e.target.value)}
+                  onChange={e => updateQuery(e.target.value)}
                   onKeyDown={e => e.key==="Enter" && handleScan()}
                   placeholder={TYPES.find(t => t.id === activeType)?.placeholder || TYPES[0].placeholder}
                 />
@@ -747,7 +750,7 @@ export default function App() {
                 </div>
                 <div style={{ marginTop:20, display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}>
                   {["https://example.com","8.8.8.8","44d88612fea8a8f36de82e1278abb02f","malware.xyz"].map(ex => (
-                    <button key={ex} onClick={() => { setQuery(ex); inputRef.current?.focus(); }} style={{
+                    <button key={ex} onClick={() => { updateQuery(ex); inputRef.current?.focus(); }} style={{
                       background:"var(--surface)", border:"1px solid var(--border2)",
                       color:"var(--text2)", padding:"7px 12px", borderRadius:6,
                       cursor:"pointer", fontFamily:"var(--mono)", fontSize:10 }}>{ex}</button>
@@ -775,7 +778,7 @@ export default function App() {
               ) : (
                 <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                   {history.map((h, i) => (
-                    <div key={i} onClick={() => { setQuery(h.query); setManualType(null); setTab("scan"); }}
+                    <div key={i} onClick={() => { updateQuery(h.query); setTab("scan"); }}
                       style={{ background:"var(--surface)", border:"1px solid var(--border2)",
                         borderRadius:8, padding:"12px 16px", cursor:"pointer" }}>
                       <div className="ts-history-item">
@@ -811,7 +814,7 @@ export default function App() {
               ) : (
                 <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                   {[...history].sort((a,b) => (b.score||0)-(a.score||0)).map((h, i) => (
-                    <div key={i} onClick={() => { setQuery(h.query); setManualType(null); setTab("scan"); }}
+                    <div key={i} onClick={() => { updateQuery(h.query); setTab("scan"); }}
                       style={{ background:"var(--surface)", border:`1px solid ${
                         h.verdict==="malicious"?"#ff335540":h.verdict==="suspicious"?"#ffd70040":"var(--border2)"
                       }`, borderRadius:8, padding:"14px 16px", cursor:"pointer",

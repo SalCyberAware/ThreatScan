@@ -6,6 +6,9 @@ import App from "./App.jsx";
 import { installEventSource, resetEventSources, lastEventSource } from "./test/eventSource.js";
 
 const HELLO_SHA256 = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
+// 1536 bytes, so the dropzone reports a non-zero "1.5 KB".
+const SIZED_BODY = "a".repeat(1536);
+const SIZED_SHA256 = "eeb66bf335f247ae90ee2eb780c21a12725c5f3724c9b0c8378f6fee84a9d13c";
 
 const searchInput = () => screen.getByRole("textbox");
 const dropzone = () => document.querySelector(".ts-dropzone");
@@ -81,11 +84,41 @@ describe("file drop", () => {
     expect(searchInput()).toHaveValue("");
   });
 
-  // BUG, reported rather than worked around: the `[query]` effect in App.jsx
-  // clears fileInfo on the render right after processFile sets it, so the file
-  // card never survives a drop. Un-skip once the effect stops resetting state
-  // the drop just wrote.
-  it.todo("shows the dropped file name, size and digest in the dropzone");
+  it("shows the dropped file name, size and digest in the dropzone", async () => {
+    render(<App />);
+    dropFile(new File([SIZED_BODY], "payload.bin"));
+    await waitFor(() => expect(searchInput()).toHaveValue(SIZED_SHA256));
+
+    const card = within(dropzone());
+    expect(card.getByText("📄 payload.bin (1.5 KB)")).toBeInTheDocument();
+    expect(card.getByText(`SHA256: ${SIZED_SHA256}`)).toBeInTheDocument();
+    expect(card.getByText(/Click or drop another file to replace/)).toBeInTheDocument();
+    expect(card.queryByText("DROP A FILE TO SCAN")).not.toBeInTheDocument();
+  });
+
+  it("keeps the file card visible while the hash scans", async () => {
+    render(<App />);
+    dropFile(new File([SIZED_BODY], "payload.bin"));
+    await waitFor(() => expect(searchInput()).toHaveValue(SIZED_SHA256));
+
+    fireEvent.click(screen.getByRole("button", { name: /SCAN NOW/ }));
+    lastEventSource().emit("engine", { id: "virustotal", verdict: "malicious" });
+    expect(within(dropzone()).getByText("📄 payload.bin (1.5 KB)")).toBeInTheDocument();
+    // The summary names the file and keeps the digest underneath it.
+    const summary = within(document.querySelector(".ts-summary-inner"));
+    expect(summary.getByText("payload.bin")).toBeInTheDocument();
+    expect(summary.getByText(SIZED_SHA256)).toBeInTheDocument();
+  });
+
+  it("clears the file card once the user types a different query", async () => {
+    render(<App />);
+    dropFile(new File([SIZED_BODY], "payload.bin"));
+    await waitFor(() => expect(searchInput()).toHaveValue(SIZED_SHA256));
+
+    fireEvent.change(searchInput(), { target: { value: "8.8.8.8" } });
+    expect(within(dropzone()).getByText("DROP A FILE TO SCAN")).toBeInTheDocument();
+    expect(screen.queryByText(/payload.bin/)).not.toBeInTheDocument();
+  });
 
   it("toggles the drag-over styling while a file hovers the dropzone", () => {
     render(<App />);
@@ -269,9 +302,50 @@ describe("history rendering details", () => {
     expect(stored[0].type).toBe("hash");
   });
 
-  // Same root cause as the dropzone todo above: fileInfo is null by the time the
-  // done handler builds the entry, so `label` falls back to the hash.
-  it.todo("labels a file scan with the file name instead of the digest");
+  it("labels a file scan with the file name instead of the digest", async () => {
+    render(<App />);
+    dropFile(new File([SIZED_BODY], "payload.bin"));
+    await waitFor(() => expect(searchInput()).toHaveValue(SIZED_SHA256));
+
+    fireEvent.click(screen.getByRole("button", { name: /SCAN NOW/ }));
+    lastEventSource().emit("done", { verdict: "malicious", score: 91 });
+
+    const stored = JSON.parse(localStorage.getItem("ts_history"));
+    expect(stored[0]).toMatchObject({
+      query: SIZED_SHA256,
+      label: "payload.bin",
+      type: "hash",
+      verdict: "malicious",
+    });
+
+    // And the history list shows that name rather than 64 hex characters.
+    fireEvent.click(tab("history"));
+    expect(screen.getByText("payload.bin")).toBeInTheDocument();
+    expect(screen.queryByText(SIZED_SHA256)).not.toBeInTheDocument();
+  });
+
+  it("names the file in the exported JSON", async () => {
+    const blobs = [];
+    URL.createObjectURL = vi.fn((blob) => {
+      blobs.push(blob);
+      return "blob:threatscan";
+    });
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    render(<App />);
+    dropFile(new File([SIZED_BODY], "payload.bin"));
+    await waitFor(() => expect(searchInput()).toHaveValue(SIZED_SHA256));
+
+    fireEvent.click(screen.getByRole("button", { name: /SCAN NOW/ }));
+    // The summary, and with it the export button, appears once an engine reports.
+    lastEventSource().emit("engine", { id: "virustotal", verdict: "malicious" });
+    lastEventSource().emit("done", { verdict: "malicious", score: 91 });
+    fireEvent.click(screen.getByRole("button", { name: /EXPORT JSON/ }));
+
+    const payload = JSON.parse(await blobs[0].text());
+    expect(payload).toMatchObject({ fileName: "payload.bin", query: SIZED_SHA256, type: "hash" });
+  });
 
   it("falls back to the raw query when an entry has no label", () => {
     localStorage.setItem(

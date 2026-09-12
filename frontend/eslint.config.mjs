@@ -36,10 +36,6 @@ export default defineConfig([
       // best-effort by design (private mode, quota), so the empty catch is the
       // intended behaviour rather than a swallowed error.
       "no-empty": ["error", { allowEmptyCatch: true }],
-
-      // The query -> detectedType effect predates this config. Warn so the smell
-      // stays visible without failing CI on untouched application code.
-      "react-hooks/set-state-in-effect": "warn",
     },
   },
   {
