@@ -98,7 +98,7 @@ const Styles = () => (
 
 const BACKEND = import.meta.env.VITE_API_URL || "/api";
 
-const ENGINE_META = {
+export const ENGINE_META = {
   virustotal:    { name:"VirusTotal",        icon:"🔬" },
   abuseipdb:     { name:"AbuseIPDB",         icon:"🛡"  },
   urlscan:       { name:"URLScan.io",        icon:"🔍" },
@@ -110,9 +110,9 @@ const ENGINE_META = {
   safebrowsing:  { name:"Google SafeBrowse", icon:"🔒" },
   threatfox:     { name:"ThreatFox",         icon:"🦊" },
 };
-const ENGINE_ORDER = Object.keys(ENGINE_META);
+export const ENGINE_ORDER = Object.keys(ENGINE_META);
 
-const TYPES = [
+export const TYPES = [
   { id:"auto",   label:"Auto-detect",  placeholder:"Paste anything — URL, IP, hash, domain…" },
   { id:"url",    label:"URL",          placeholder:"https://suspicious-site.example.com"      },
   { id:"ip",     label:"IP / Host",    placeholder:"192.168.1.1"                              },
@@ -127,7 +127,7 @@ const SHA256_RE = /^[a-fA-F0-9]{64}$/;
 const URL_RE    = /^https?:\/\/.+/i;
 const DOMAIN_RE = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
 
-function detectInputType(q) {
+export function detectInputType(q) {
   if (!q || !q.trim()) return "auto";
   const s = q.trim();
   if (URL_RE.test(s))    return "url";
@@ -137,7 +137,7 @@ function detectInputType(q) {
   return "auto";
 }
 
-async function hashFile(file) {
+export async function hashFile(file) {
   const buffer = await file.arrayBuffer();
   const digest = await crypto.subtle.digest("SHA-256", buffer);
   return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2,"0")).join("");
