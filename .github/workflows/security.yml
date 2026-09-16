@@ -1,0 +1,174 @@
+name: Security
+
+# Tier 1 of PromptShield's docs/AUTOMATION_PLAN.md, ported to ThreatScan.
+#
+# Nothing in this workflow modifies a file, opens a pull request, or touches
+# production. Each scanner is its own job so that a red check names the scanner
+# that found something instead of pointing at a single "security" blob.
+#
+# Kept separate from ci.yml on purpose. A scanner going red is a different
+# signal from the build going red, and the two should be readable apart.
+#
+# No pip-audit job here: ThreatScan is Node on both sides, so there is no Python
+# dependency tree to audit. The two npm trees are audited as two separate jobs
+# instead, because the backend ships to a server and the frontend ships to a
+# browser, and a finding in one says nothing about the other.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, Mondays at 06:00 UTC. Push and pull request triggers only fire
+    # when the code changes. A CVE disclosed against a dependency that has not
+    # changed in months would never surface without a scheduled run.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  npm-audit-backend:
+    name: npm audit (backend production tree)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        # Node 20 to match the backend job in ci.yml.
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      # Why --omit=dev:
+      #
+      # The dev tree here is jest, nodemon, and supertest. They run on a CI
+      # runner and on a developer's laptop, never in the deployed process, so an
+      # advisory against one of them is not a vulnerability in the running
+      # service. The production tree is the opposite case and is not filtered:
+      # express, axios, cors, helmet and their transitives are the code that
+      # actually handles requests on Railway, so anything found there is real.
+      #
+      # This is scope, not threshold. Nothing is ignored or suppressed. As of
+      # 2026-09-16 the production tree carries 5 findings (2 high: axios,
+      # form-data; 3 moderate: express, body-parser, qs), every one of them
+      # fixable by a semver-compatible update. This job is expected to be red
+      # until those are bumped, and that is the correct signal rather than
+      # something to tune away.
+      #
+      # No `npm ci` step: npm audit resolves the tree from package-lock.json and
+      # does not need node_modules on disk.
+      - name: Audit backend production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  npm-audit-frontend:
+    name: npm audit (frontend production tree)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        # Node 24 to match the frontend job in ci.yml.
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      # Why --omit=dev:
+      #
+      # The dev tree here is the Vite, Vitest and ESLint build toolchain. It runs
+      # on a CI runner and on a developer's laptop. It is never served to a
+      # browser and never present in the deployed bundle, so an advisory against
+      # a transitive build dependency is not a vulnerability in the shipped
+      # product. As of 2026-09-16 the full tree carries 9 such findings (4 high,
+      # 4 moderate, 1 low: vite, vitest, esbuild, postcss, nanoid, browserslist,
+      # baseline-browser-mapping, @vitest/mocker, @babel/core). The production
+      # tree, which is React and React DOM, carries zero.
+      #
+      # Including them would make this job permanently red for reasons nobody can
+      # act on except by waiting for an upstream release, and a check that is red
+      # for unactionable reasons is a check that gets ignored.
+      #
+      # Dev-tree findings are not dropped on the floor. They surface as
+      # dependency update pull requests once Tier 2 is switched on, and any
+      # developer running a bare `npm audit` sees them immediately.
+      - name: Audit frontend production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  gitleaks:
+    name: gitleaks (secret scanning, full history)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository with full history
+        uses: actions/checkout@v6
+        with:
+          # A secret that was committed and later deleted is still in the
+          # history and still compromised. The default shallow clone would scan
+          # only the tip and report a clean repo either way.
+          #
+          # This matters more here than in the sibling repos: ThreatScan fans out
+          # to eleven threat intelligence providers, each with its own API key.
+          fetch-depth: 0
+
+      # Installed from the pinned release and checksum-verified rather than
+      # pulled from a floating action tag, so a compromised upstream tag cannot
+      # silently change what runs here.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: "8.28.0"
+          GITLEAKS_SHA256: "a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb"
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      # --redact matters because this is a public repository: the Actions log is
+      # world-readable, and a finding printed in full would republish the secret
+      # to a second place. The rule name, file, and commit are enough to act on.
+      - name: Scan the full git history
+        run: gitleaks git . --redact --verbose
+
+  codeql:
+    name: CodeQL (javascript-typescript)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      # No build step: both sides are JavaScript, which CodeQL analyzes without
+      # one. One language here rather than PromptShield's two, since there is no
+      # Python in this repo.
+      #
+      # Note on reading this job: a green check here means the analysis ran, not
+      # that it found nothing. CodeQL uploads alerts to the Security tab and does
+      # not fail the workflow on them by design. Triage the Security tab weekly;
+      # do not read this checkmark as an all-clear.
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
