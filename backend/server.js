@@ -144,13 +144,23 @@ const bulkRateLimit = rateLimit({
   standardHeaders: true, legacyHeaders: false,
 });
 
+// The git commit this process is actually running. Railway sets
+// RAILWAY_GIT_COMMIT_SHA on every deployment originating from a GitHub push and
+// exposes it to the running container; GIT_COMMIT_SHA is a platform-neutral
+// override. Neither is set locally, which is what "unknown" means — not an
+// error. Read per request so tests can vary it; fixed per deployed process.
+const buildCommit = () =>
+  process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || "unknown";
+
 app.get("/api/health", (req, res) => {
   const status = {};
   for (const [id, keyName] of Object.entries(ENGINE_KEYS)) {
     status[id] = keyName === null ? "active (no key needed)"
                : process.env[keyName] ? "active" : "inactive (no key set)";
   }
-  res.json({ status:"ok", engines:status, uptime:process.uptime(), cacheSize:cache.size });
+  // `commit` lets a post-deploy check prove the running build is the commit
+  // that was just pushed. See PromptShield docs/AUTOMATION_PLAN.md.
+  res.json({ status:"ok", commit:buildCommit(), engines:status, uptime:process.uptime(), cacheSize:cache.size });
 });
 
 // ── SSE Streaming Scan Endpoint ───────────────────────────────────────────────

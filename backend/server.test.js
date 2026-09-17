@@ -204,6 +204,43 @@ describe("GET /api/health", () => {
     const after = await request(app).get("/api/health");
     expect(after.body.cacheSize).toBe(1);
   });
+
+  describe("build identity", () => {
+    afterEach(() => {
+      delete process.env.RAILWAY_GIT_COMMIT_SHA;
+      delete process.env.GIT_COMMIT_SHA;
+    });
+
+    test("reports unknown when no platform variable is set", async () => {
+      delete process.env.RAILWAY_GIT_COMMIT_SHA;
+      delete process.env.GIT_COMMIT_SHA;
+      const res = await request(app).get("/api/health");
+      expect(res.body.commit).toBe("unknown");
+    });
+
+    test("reports the Railway commit SHA verbatim", async () => {
+      process.env.RAILWAY_GIT_COMMIT_SHA = "a".repeat(40);
+      const res = await request(app).get("/api/health");
+      expect(res.body.commit).toBe("a".repeat(40));
+    });
+
+    test("falls back to GIT_COMMIT_SHA, but Railway's wins", async () => {
+      process.env.GIT_COMMIT_SHA = "b".repeat(40);
+      let res = await request(app).get("/api/health");
+      expect(res.body.commit).toBe("b".repeat(40));
+
+      process.env.RAILWAY_GIT_COMMIT_SHA = "c".repeat(40);
+      res = await request(app).get("/api/health");
+      expect(res.body.commit).toBe("c".repeat(40));
+    });
+
+    test("existing health fields survive alongside commit", async () => {
+      // The uptime monitor reads these — adding commit must stay additive.
+      const res = await request(app).get("/api/health");
+      expect(Object.keys(res.body).sort())
+        .toEqual(["cacheSize", "commit", "engines", "status", "uptime"]);
+    });
+  });
 });
 
 describe("calcScore", () => {
