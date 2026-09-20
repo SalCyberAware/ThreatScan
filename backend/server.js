@@ -1,4 +1,7 @@
-require("dotenv").config();
+// dotenv 17 flipped `quiet` to false, so config() now writes an informational
+// "injecting env" line (plus a rotating tip) to stdout on every start. This
+// process's stdout is read by log collectors and by the test suite; keep it clean.
+require("dotenv").config({ quiet: true });
 const express   = require("express");
 const cors      = require("cors");
 const helmet    = require("helmet");
@@ -373,7 +376,10 @@ app.get("/api/scan/bulk", bulkRateLimit, async (req, res) => {
 
 // ── Legacy JSON endpoint ──────────────────────────────────────────────────────
 app.post("/api/scan", scanRateLimit, async (req, res) => {
-  const q = sanitizeQuery(req.body.query);
+  // Express 5 leaves req.body undefined when no body parser matched the request;
+  // Express 4 defaulted it to {}. Without the guard, a POST with no body (or a
+  // non-JSON content-type) throws instead of returning the 400 below.
+  const q = sanitizeQuery(req.body?.query);
   if (!q) return res.status(400).json({ error: "Invalid or missing query." });
 
   const qLow = q.toLowerCase();
@@ -421,6 +427,25 @@ app.post("/api/scan", scanRateLimit, async (req, res) => {
 
   setCache(cacheKey, result);
   res.json(result);
+});
+
+// ── Error handler ─────────────────────────────────────────────────────────────
+// Express 5 forwards a rejected promise from an async handler to the error
+// handling middleware; Express 4 left it as an unhandled rejection, so the
+// request simply hung and nothing was ever rendered. Handler faults now reach
+// the client, and Express's default handler renders the stack trace -- which on
+// this app leaks absolute filesystem paths. Route them through safeError()
+// instead, the same scrubbing already applied to engine failures.
+//
+// The headersSent branch is for the two SSE endpoints: once flushHeaders() has
+// run, the response is a text/event-stream and a JSON error body cannot be
+// written into it. Closing the stream is what the frontend already handles --
+// EventSource.onerror surfaces "Connection error" and closes (App.jsx:534).
+// eslint-disable-next-line no-unused-vars -- Express needs the 4-arg signature
+app.use((err, req, res, next) => {
+  console.error("Unhandled request error:", err);
+  if (res.headersSent) return res.end();
+  res.status(500).json({ error: safeError(err) });
 });
 
 if (require.main === module) {
