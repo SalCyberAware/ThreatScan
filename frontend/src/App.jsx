@@ -467,6 +467,10 @@ const BulkScan = () => {
 export default function App() {
   const [query,        setQuery]        = useState("");
   const [manualType,   setManualType]   = useState(null);
+  // The type the completed scan actually ran with. Kept separately from
+  // activeType, which tracks the live controls and drifts once the query or a
+  // chip changes after the scan -- the export has to report what was scanned.
+  const [scannedType,  setScannedType]  = useState(null);
   const [scanning,     setScanning]     = useState(false);
   const [engineData,   setEngineData]   = useState({});
   const [engineStatus, setEngineStatus] = useState({});
@@ -517,7 +521,7 @@ export default function App() {
   const handleScan = () => {
     if (!query.trim() || scanning) return;
     const resolvedType = activeType === "auto" ? detectInputType(query.trim()) : activeType;
-    setScanning(true); setEngineData({}); setEngineStatus({}); setSummary(null); setError(null);
+    setScanning(true); setScannedType(resolvedType); setEngineData({}); setEngineStatus({}); setSummary(null); setError(null);
     const initStatus = {};
     ENGINE_ORDER.forEach(id => { initStatus[id] = "scanning"; });
     setEngineStatus(initStatus);
@@ -557,7 +561,7 @@ export default function App() {
     const output = {
       query:      query.trim(),
       fileName:   fileInfo?.name || null,
-      type:       detectInputType(query.trim()),
+      type:       scannedType,
       verdict:    summary.verdict,
       score:      summary.score,
       scannedAt:  summary.scannedAt || new Date().toISOString(),

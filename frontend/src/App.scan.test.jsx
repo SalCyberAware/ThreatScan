@@ -387,4 +387,34 @@ describe("JSON export", () => {
     source.emit("engine", engineEvent("virustotal", "clean"));
     expect(screen.queryByRole("button", { name: /EXPORT JSON/ })).not.toBeInTheDocument();
   });
+
+  // Issue #4: the export re-ran detectInputType(query) at click time instead of
+  // recording the type the scan was actually run with, so a chip override was
+  // silently replaced by the auto-detected type in the exported file.
+  it("exports the overridden type, not the auto-detected one", async () => {
+    const blobs = [];
+    URL.createObjectURL = vi.fn((blob) => {
+      blobs.push(blob);
+      return "blob:threatscan";
+    });
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    render(<App />);
+    typeQuery("8.8.8.8");
+    fireEvent.click(screen.getByRole("button", { name: "Domain" }));
+    fireEvent.click(scanButton());
+
+    // The override is what was sent, so it is what the export must report.
+    expect(lastParams().type).toBe("domain");
+
+    const source = lastEventSource();
+    source.emit("engine", engineEvent("virustotal", "clean"));
+    source.emit("done", { verdict: "clean", score: 0, scannedAt: "2026-01-01T00:00:00.000Z" });
+    fireEvent.click(screen.getByRole("button", { name: /EXPORT JSON/ }));
+
+    const payload = JSON.parse(await blobs[0].text());
+    expect(payload.type).toBe("domain");
+    expect(payload.query).toBe("8.8.8.8");
+  });
 });
