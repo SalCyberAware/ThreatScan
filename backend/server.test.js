@@ -529,3 +529,60 @@ describe("GET /api/scan/bulk — cache reuse mid-batch", () => {
     expect(engines.virustotal.scanDomain).toHaveBeenLastCalledWith("b.com");
   });
 });
+
+// ── Express 5 migration regressions ───────────────────────────────────────────
+// Express 5 leaves req.body undefined when no body parser matched, where
+// Express 4 defaulted it to {}. Unguarded, `req.body.query` threw a TypeError,
+// which Express 5 (unlike 4) forwards to the error handler — turning what had
+// been a clean 400 into a 500 whose default body rendered the stack trace and
+// the server's absolute filesystem paths. These pin the 400 back down.
+describe("POST /api/scan — requests that carry no parsed body", () => {
+  test("returns 400 when the request has no body at all", async () => {
+    const res = await request(app).post("/api/scan");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid|missing/i);
+  });
+
+  test("returns 400 when the content-type is not JSON", async () => {
+    const res = await request(app)
+      .post("/api/scan")
+      .set("Content-Type", "text/plain")
+      .send("query=example.com");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid|missing/i);
+  });
+
+  test("does not leak a stack trace or filesystem path on a bodyless POST", async () => {
+    const res = await request(app).post("/api/scan");
+    expect(res.text).not.toMatch(/TypeError|at Layer|node_modules/);
+    expect(res.text).not.toMatch(/[A-Za-z]:\|\/home\/|\/Users\//);
+  });
+});
+
+describe("error handler", () => {
+  // Express 5 routes rejected promises from async handlers here. The response
+  // must be scrubbed JSON, not Express's default stack-trace page.
+  let errorSpy;
+  const savedNodeEnv = process.env.NODE_ENV;
+
+  beforeEach(() => {
+    errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    if (savedNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = savedNodeEnv;
+    errorSpy.mockRestore();
+  });
+
+  test("renders a JSON error body rather than Express's HTML stack page", async () => {
+    process.env.NODE_ENV = "production";
+    const res = await request(app)
+      .get("/api/health")
+      .set("Origin", "https://evil.example.com");
+    expect(res.status).toBe(500);
+    expect(res.headers["content-type"]).toMatch(/application\/json/);
+    expect(typeof res.body.error).toBe("string");
+    expect(res.text).not.toMatch(/<!DOCTYPE html>|at Layer/);
+  });
+});
