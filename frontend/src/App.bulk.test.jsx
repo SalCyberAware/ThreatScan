@@ -242,4 +242,78 @@ describe("CSV export", () => {
     fireEvent.click(screen.getByRole("button", { name: /EXPORT CSV/ }));
     expect(blobs[0].type).toBe("text/csv");
   });
+
+  // Issue #3: fields were written bare, so one comma in a query shifted every
+  // later column in that row -- a corrupted export rather than a failed one.
+  it("quotes fields containing a comma, a quote or a newline (RFC 4180)", async () => {
+    const blobs = captureDownload();
+    renderBulk();
+    const source = startBulk(["8.8.8.8"]);
+    source.emit("start", { queries: ["8.8.8.8"] });
+    source.emit("result", {
+      index: 0,
+      query: 'evil.com/a,b"c\nd',
+      type: "domain",
+      verdict: "malicious",
+      score: 90,
+      malicious: 3,
+      suspicious: 1,
+      clean: 0,
+      cached: false,
+    });
+    source.emit("done", { total: 1, malicious: 1, suspicious: 0, clean: 0 });
+
+    fireEvent.click(screen.getByRole("button", { name: /EXPORT CSV/ }));
+    const csv = await blobs[0].text();
+
+    // The query is wrapped in quotes and its embedded quote is doubled; the
+    // other fields need no quoting and stay bare, which RFC 4180 §2.5 allows.
+    expect(csv).toBe(
+      "Query,Type,Verdict,Score,Malicious,Suspicious,Clean,Cached\n" +
+      '"evil.com/a,b""c\nd",domain,malicious,90,3,1,0,false'
+    );
+  });
+
+  it("round-trips a comma-bearing query without shifting columns", async () => {
+    const blobs = captureDownload();
+    renderBulk();
+    const source = startBulk(["8.8.8.8"]);
+    source.emit("start", { queries: ["8.8.8.8"] });
+    const query = 'evil.com/a,b"c\nd';
+    source.emit("result", {
+      index: 0, query, type: "domain", verdict: "malicious",
+      score: 90, malicious: 3, suspicious: 1, clean: 0, cached: false,
+    });
+    source.emit("done", { total: 1, malicious: 1, suspicious: 0, clean: 0 });
+
+    fireEvent.click(screen.getByRole("button", { name: /EXPORT CSV/ }));
+    const records = parseCSV(await blobs[0].text());
+
+    // Two records, and the data row still has exactly its eight columns with the
+    // query intact -- the column shift this issue reported cannot happen.
+    expect(records).toHaveLength(2);
+    expect(records[1]).toEqual([
+      query, "domain", "malicious", "90", "3", "1", "0", "false",
+    ]);
+  });
 });
+
+/** Minimal RFC 4180 reader, so the export is checked by parsing rather than by
+ *  splitting on commas -- which is the very assumption the bug broke. */
+function parseCSV(text) {
+  const records = [[""]];
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    const rec = records[records.length - 1];
+    if (inQuotes) {
+      if (c === '"' && text[i + 1] === '"') { rec[rec.length - 1] += '"'; i++; }
+      else if (c === '"') inQuotes = false;
+      else rec[rec.length - 1] += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ",") rec.push("");
+    else if (c === "\n") records.push([""]);
+    else rec[rec.length - 1] += c;
+  }
+  return records;
+}

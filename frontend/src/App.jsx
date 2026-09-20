@@ -263,6 +263,17 @@ const EngineCard = ({ engineId, data, status }) => {
   );
 };
 
+// RFC 4180: a field containing a comma, a double quote or a line break must be
+// enclosed in double quotes (§2.6), and a quote inside a quoted field is escaped
+// by doubling it (§2.7). Fields with none of those are left bare, which §2.5
+// permits -- so an ordinary row stays readable and only the risky ones grow
+// quotes. Without this, one comma in a query shifted every later column in that
+// row, silently corrupting the export rather than failing it.
+const csvField = (value) => {
+  const s = String(value ?? "");
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
 // ── Bulk Scan UI ──────────────────────────────────────────────────────────────
 const BulkScan = () => {
   const [input,    setInput]    = useState("");
@@ -321,7 +332,7 @@ const BulkScan = () => {
         rows.push([r.query, r.type, r.verdict, r.score, r.malicious, r.suspicious, r.clean, r.cached]);
       }
     });
-    const csv = rows.map(r => r.join(",")).join("\n");
+    const csv = rows.map(r => r.map(csvField).join(",")).join("\n");
     const blob = new Blob([csv], { type:"text/csv" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
