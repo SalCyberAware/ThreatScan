@@ -14,9 +14,15 @@ Scan URLs, IPs, file hashes & domains across **11 live security engines** simult
 [![Frontend on Vercel](https://img.shields.io/badge/Frontend-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com)
 
 
-<div align="center">
+![ThreatScan scan view: a URL scanned across 11 engines, showing a clean final verdict, a threat score of 7 and one result card per engine](docs/images/scan.png)
 
-![ThreatScan Screenshot](threatscan-screenshot.png)
+**Bulk scan** — up to 20 indicators in a single pass, exportable as CSV
+
+![Bulk scan results: five queries scanned at once, summarised as one malicious, one suspicious and three clean, in a table of query, type, verdict and score](docs/images/bulk-scan.png)
+
+**Trending threats** — the session's scans ranked by score
+
+![Trending threats view: scans from the current session listed by score, each with its verdict badge, detected type and timestamp](docs/images/trends.png)
 
 </div>
 
