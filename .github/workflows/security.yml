@@ -105,11 +105,13 @@ jobs:
       # except by waiting for an upstream release, and a check that is red for
       # unactionable reasons is a check that gets ignored.
       #
-      # Dev-tree findings are not dropped on the floor, but this job will not
-      # show them, and Dependabot does not reliably raise them either: a high
-      # brace-expansion finding under eslint (fixed in 56e7d4f) sat in the full
-      # tree with no Dependabot alert or PR. Run a bare `npm audit` in frontend/
-      # when reviewing dependency PRs to see the full tree.
+      # Dev-tree findings are not dropped on the floor. This job will not show
+      # them, but Dependabot raises them as alerts and security-advisory pull
+      # requests, and any developer running a bare `npm audit` sees them
+      # immediately. Expect some lag on the Dependabot side: the brace-expansion
+      # advisories under eslint (fixed in 56e7d4f) were published on 2026-09-29
+      # and only became alerts here on 2026-10-01, on the next push to main,
+      # while `npm audit` reported them from publication.
       - name: Audit frontend production dependencies
         run: npm audit --omit=dev --audit-level=high
 
