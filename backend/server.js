@@ -1,6 +1,7 @@
-// dotenv 17 flipped `quiet` to false, so config() now writes an informational
-// "injecting env" line (plus a rotating tip) to stdout on every start. This
-// process's stdout is read by log collectors and by the test suite; keep it clean.
+// dotenv's `quiet` still defaults to false, so without it config() writes an
+// informational "injected env" line on every start (to stderr since dotenv 18;
+// dotenv 17 sent it to stdout with a rotating tip). Log collectors and the test
+// suite read this process's output; keep it clean.
 require("dotenv").config({ quiet: true });
 const express   = require("express");
 const cors      = require("cors");
