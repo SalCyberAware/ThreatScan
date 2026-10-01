@@ -57,11 +57,13 @@ jobs:
       # express, axios, cors, helmet and their transitives are the code that
       # actually handles requests on Railway, so anything found there is real.
       #
-      # This is scope, not threshold. Nothing is ignored or suppressed. As of
-      # 2026-09-16 the production tree carries 5 findings (2 high: axios,
-      # form-data; 3 moderate: express, body-parser, qs), every one of them
-      # fixable by a semver-compatible update. This job is expected to be red
-      # until those are bumped, and that is the correct signal rather than
+      # This is scope, not threshold. Nothing is ignored or suppressed. When
+      # this job was added on 2026-09-16 the production tree carried 5 findings
+      # (2 high: axios, form-data; 3 moderate: express, body-parser, qs), and
+      # the job was red on its first run. All five were cleared the same day by
+      # a semver-compatible `npm audit fix` (24cb4eb), and the job has been
+      # green since. A red run here now means a new advisory against code that
+      # handles live requests, which is the signal to act on rather than
       # something to tune away.
       #
       # No `npm ci` step: npm audit resolves the tree from package-lock.json and
@@ -93,18 +95,21 @@ jobs:
       # on a CI runner and on a developer's laptop. It is never served to a
       # browser and never present in the deployed bundle, so an advisory against
       # a transitive build dependency is not a vulnerability in the shipped
-      # product. As of 2026-09-16 the full tree carries 9 such findings (4 high,
+      # product. On 2026-09-16 the full tree carried 9 such findings (4 high,
       # 4 moderate, 1 low: vite, vitest, esbuild, postcss, nanoid, browserslist,
-      # baseline-browser-mapping, @vitest/mocker, @babel/core). The production
-      # tree, which is React and React DOM, carries zero.
+      # baseline-browser-mapping, @vitest/mocker, @babel/core), cleared by
+      # 63f0e6b and the toolchain upgrade in #15. The production tree, which is
+      # React and React DOM, carried zero then and still does.
       #
-      # Including them would make this job permanently red for reasons nobody can
-      # act on except by waiting for an upstream release, and a check that is red
-      # for unactionable reasons is a check that gets ignored.
+      # Including them would make this job red for reasons nobody can act on
+      # except by waiting for an upstream release, and a check that is red for
+      # unactionable reasons is a check that gets ignored.
       #
-      # Dev-tree findings are not dropped on the floor. They surface as
-      # dependency update pull requests once Tier 2 is switched on, and any
-      # developer running a bare `npm audit` sees them immediately.
+      # Dev-tree findings are not dropped on the floor, but this job will not
+      # show them, and Dependabot does not reliably raise them either: a high
+      # brace-expansion finding under eslint (fixed in 56e7d4f) sat in the full
+      # tree with no Dependabot alert or PR. Run a bare `npm audit` in frontend/
+      # when reviewing dependency PRs to see the full tree.
       - name: Audit frontend production dependencies
         run: npm audit --omit=dev --audit-level=high
 
@@ -156,7 +161,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: javascript-typescript
 
@@ -169,6 +174,6 @@ jobs:
       # not fail the workflow on them by design. Triage the Security tab weekly;
       # do not read this checkmark as an all-clear.
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: "/language:javascript-typescript"
