@@ -139,6 +139,21 @@ ci: upload coverage to Codecov, add badge to README
 
 For larger or design-level changes, please open an issue first to discuss the approach.
 
+## Branch Protection
+
+`main` is protected by two repository rulesets (Settings > Rules > Rulesets):
+
+- **Ruleset A, "main: no deletion, no force push"**: `main` cannot be deleted or force-pushed. It has no bypass list, so this applies to everyone, repository admins included. History on `main` only moves forward.
+- **Ruleset B, "main: required CI and Security checks"**: a pull request into `main` can only merge once these GitHub Actions jobs have passed on it:
+  - CI: `Backend checks`, `Frontend (lint + build + tests)`
+  - Security: `npm audit (backend production tree)`, `npm audit (frontend production tree)`, `gitleaks (secret scanning, full history)`, `CodeQL (javascript-typescript)`
+
+  The branch does not have to be up to date with `main` first. Deploy verification is not required, because it only runs after a push to `main`.
+
+Repository admins are on Ruleset B's bypass list, so a maintainer can still push directly to `main`; git reports it as "Bypassed rule violations" and CI, Security and Deploy verification then run on the pushed commit as usual. `gh pr merge` on a pull request with a failing or missing required check is refused unless an admin deliberately adds `--admin`.
+
+Ruleset B matches checks by job name. **If you rename a job in `ci.yml` or `security.yml`, or add or remove one, update Ruleset B in the same change.** Otherwise it keeps waiting for a check that no longer exists, and every pull request stays blocked.
+
 ## License
 
 By contributing you agree your changes are licensed under the project's [MIT License](LICENSE).
