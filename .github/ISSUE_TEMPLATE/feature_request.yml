@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest a new engine, feature or improvement.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How you would like it to work.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: engine
+    attributes:
+      label: New engine
+      options:
+        - label: This request is for a new threat-intel engine (see "Adding a New Threat-Intel Engine" in CONTRIBUTING.md)

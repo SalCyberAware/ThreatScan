@@ -8,6 +8,8 @@ Scan URLs, IPs, file hashes & domains across **11 live security engines** simult
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-threat--scan.vercel.app-00ff88?style=for-the-badge&logo=vercel&logoColor=black)](https://threat-scan.vercel.app)
 [![Tests](https://img.shields.io/github/actions/workflow/status/SalCyberAware/ThreatScan/ci.yml?branch=main&style=for-the-badge&label=tests&logo=github)](https://github.com/SalCyberAware/ThreatScan/actions/workflows/ci.yml)
+[![Security](https://img.shields.io/github/actions/workflow/status/SalCyberAware/ThreatScan/security.yml?branch=main&style=for-the-badge&label=security&logo=github)](https://github.com/SalCyberAware/ThreatScan/actions/workflows/security.yml)
+[![Deploy verification](https://img.shields.io/github/actions/workflow/status/SalCyberAware/ThreatScan/deploy-verify.yml?branch=main&style=for-the-badge&label=deploy%20verification&logo=github)](https://github.com/SalCyberAware/ThreatScan/actions/workflows/deploy-verify.yml)
 [![codecov](https://img.shields.io/codecov/c/github/SalCyberAware/ThreatScan?style=for-the-badge&label=coverage&logo=codecov&logoColor=white)](https://codecov.io/gh/SalCyberAware/ThreatScan)
 [![License: MIT](https://img.shields.io/badge/License-MIT-00ff88?style=for-the-badge)](LICENSE)
 [![Deploy on Railway](https://img.shields.io/badge/Backend-Railway-blueviolet?style=for-the-badge&logo=railway)](https://railway.app)

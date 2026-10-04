@@ -1,0 +1,14 @@
+# Code owners for ThreatScan. Later rules take precedence over earlier ones.
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repository.
+*                           @SalCyberAware
+
+# Workflows, Dependabot config, issue and PR templates, and this file.
+/.github/                   @SalCyberAware
+
+# Dependency manifests and lockfiles.
+/backend/package.json       @SalCyberAware
+/backend/package-lock.json  @SalCyberAware
+/frontend/package.json      @SalCyberAware
+/frontend/package-lock.json @SalCyberAware
