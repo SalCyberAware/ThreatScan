@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/SalCyberAware/ThreatScan/security/advisories/new
+    about: Please report security issues privately through GitHub private vulnerability reporting, not as a public issue.
+  - name: Security policy
+    url: https://github.com/SalCyberAware/ThreatScan/blob/main/SECURITY.md
+    about: Scope, response timeline and safe harbor for security reports.
