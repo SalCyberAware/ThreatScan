@@ -178,3 +178,53 @@ describe("urlhaus.scanIp", () => {
     expect(result.detail).toMatch(/URL\/domain\/hash/i);
   });
 });
+
+// Run fn with MALWAREBAZAAR_KEY set to value (undefined = unset), then restore.
+async function withAbuseKey(value, fn) {
+  const original = process.env.MALWAREBAZAAR_KEY;
+  if (value === undefined) delete process.env.MALWAREBAZAAR_KEY;
+  else process.env.MALWAREBAZAAR_KEY = value;
+  try { return await fn(); }
+  finally {
+    if (original === undefined) delete process.env.MALWAREBAZAAR_KEY;
+    else process.env.MALWAREBAZAAR_KEY = original;
+  }
+}
+
+describe("urlhaus authentication", () => {
+  beforeEach(() => axios.post.mockReset());
+
+  test.each([
+    ["scanUrl",    () => urlhaus.scanUrl("http://example.com"),  "/url/"],
+    ["scanDomain", () => urlhaus.scanDomain("example.com"),      "/host/"],
+    ["scanHash",   () => urlhaus.scanHash("e".repeat(64)),       "/payload/"],
+  ])("%s sends the abuse.ch key in the Auth-Key header", async (_name, run, path) => {
+    axios.post.mockResolvedValueOnce({ data: { query_status: "no_results" } });
+    await withAbuseKey("abuse-test-key", run);
+    const [url, body, config] = axios.post.mock.calls[0];
+    expect(url).toContain(path);
+    expect(config.headers["Auth-Key"]).toBe("abuse-test-key");
+    expect(config.headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
+    expect(String(body)).not.toContain("abuse-test-key");
+  });
+
+  test("omits the Auth-Key header when MALWAREBAZAAR_KEY is unset", async () => {
+    axios.post.mockResolvedValueOnce({ data: { query_status: "no_results" } });
+    await withAbuseKey(undefined, () => urlhaus.scanUrl("http://example.com"));
+    const config = axios.post.mock.calls[0][2];
+    expect(config.headers).not.toHaveProperty("Auth-Key");
+  });
+
+  test("ignores the retired URLHAUS_KEY variable", async () => {
+    const original = process.env.URLHAUS_KEY;
+    process.env.URLHAUS_KEY = "stale-urlhaus-key";
+    try {
+      axios.post.mockResolvedValueOnce({ data: { query_status: "no_results" } });
+      await withAbuseKey("abuse-test-key", () => urlhaus.scanUrl("http://example.com"));
+      expect(axios.post.mock.calls[0][2].headers["Auth-Key"]).toBe("abuse-test-key");
+    } finally {
+      if (original === undefined) delete process.env.URLHAUS_KEY;
+      else process.env.URLHAUS_KEY = original;
+    }
+  });
+});

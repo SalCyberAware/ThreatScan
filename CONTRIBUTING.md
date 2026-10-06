@@ -29,7 +29,7 @@ There is no `.env.example` in the repo. Create `backend/.env` yourself with the 
 VT_API_KEY=...          # VirusTotal
 ABUSEIPDB_KEY=...       # AbuseIPDB
 URLSCAN_KEY=...         # URLScan.io
-MALWAREBAZAAR_KEY=...   # MalwareBazaar
+MALWAREBAZAAR_KEY=...   # abuse.ch: MalwareBazaar, URLhaus and ThreatFox
 OTX_KEY=...             # AlienVault OTX
 GREYNOISE_KEY=...       # GreyNoise
 IPINFO_KEY=...          # IPInfo
@@ -40,7 +40,7 @@ PORT=4000               # default 4000
 FRONTEND_URL=http://localhost:5173   # CORS allowlist origin (required in production)
 ```
 
-URLhaus, ThreatFox, and WHOIS/DNS need no API key.
+WHOIS/DNS needs no API key. URLhaus and ThreatFox use the same abuse.ch key as MalwareBazaar, so all three are skipped when `MALWAREBAZAAR_KEY` is unset.
 
 The frontend reads `VITE_API_URL` from `frontend/.env` if you point it at a non-default backend:
 

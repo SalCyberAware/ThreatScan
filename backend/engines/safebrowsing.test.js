@@ -32,6 +32,23 @@ describe("safebrowsing.scanUrl", () => {
     expect(body.threatInfo.threatTypes).toContain("MALWARE");
   });
 
+  test("sends GSB_KEY in the x-goog-api-key header, never in the URL", async () => {
+    const original = process.env.GSB_KEY;
+    process.env.GSB_KEY = "gsb-test-key";
+    try {
+      axios.post.mockResolvedValueOnce({ data: {} });
+      await sb.scanUrl("https://example.com");
+      const [url, , config] = axios.post.mock.calls[0];
+      expect(url).toBe("https://safebrowsing.googleapis.com/v4/threatMatches:find");
+      expect(url).not.toContain("gsb-test-key");
+      expect(url).not.toContain("key=");
+      expect(config.headers["x-goog-api-key"]).toBe("gsb-test-key");
+    } finally {
+      if (original === undefined) delete process.env.GSB_KEY;
+      else process.env.GSB_KEY = original;
+    }
+  });
+
   test("propagates axios errors (no internal handler)", async () => {
     const err = new Error("Forbidden");
     err.response = { status: 403 };

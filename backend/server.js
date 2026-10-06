@@ -32,9 +32,9 @@ const ENGINE_KEYS = {
   otx:           "OTX_KEY",
   greynoise:     "GREYNOISE_KEY",
   ipinfo:        "IPINFO_KEY",
-  urlhaus:       null,   // ← free, no key needed
+  urlhaus:       "MALWAREBAZAAR_KEY",   // one abuse.ch key serves URLhaus, ThreatFox and MalwareBazaar
   safebrowsing:  "GSB_KEY",
-  threatfox:     null,
+  threatfox:     "MALWAREBAZAAR_KEY",
   whois:         null,
 };
 
