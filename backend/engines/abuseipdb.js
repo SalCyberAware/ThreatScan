@@ -1,4 +1,5 @@
 const axios = require("axios");
+const { DEFAULT_TIMEOUT } = require("../utils/upstream");
 const BASE = "https://api.abuseipdb.com/api/v2";
 const KEY  = () => process.env.ABUSEIPDB_KEY;
 
@@ -18,14 +19,15 @@ function isValidIP(str) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function scanIp(ip) {
+async function scanIp(ip, signal) {
   if (!isValidIP(ip)) {
     return { verdict: "info", detail: "IP-only engine" };
   }
 
   const res = await axios.get(`${BASE}/check`, {
     params: { ipAddress: ip, maxAgeInDays: 90, verbose: true },
-    headers: { Key: KEY(), Accept: "application/json" }
+    headers: { Key: KEY(), Accept: "application/json" },
+    timeout: DEFAULT_TIMEOUT, signal,
   });
   const d = res.data.data;
   const verdict = d.abuseConfidenceScore >= 75 ? "malicious"

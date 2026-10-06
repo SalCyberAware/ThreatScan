@@ -1,4 +1,5 @@
 const axios = require("axios");
+const { pathSegment } = require("../utils/upstream");
 const BASE = "https://otx.alienvault.com/api/v1";
 const KEY  = () => process.env.OTX_KEY;
 const headers = () => ({ "X-OTX-API-KEY": KEY() });
@@ -7,13 +8,13 @@ const headers = () => ({ "X-OTX-API-KEY": KEY() });
 // OTX free tier is slow, especially on /reputation, so we keep this generous.
 const TIMEOUT = { timeout: 15000 };
 
-async function scanIp(ip) {
+async function scanIp(ip, signal) {
   // Best-effort dual-fetch: /general is load-bearing (drives the verdict),
   // /reputation is supplemental (just provides the score). Use allSettled so
   // a slow /reputation does not nuke a perfectly good /general result.
   const [generalResult, repResult] = await Promise.allSettled([
-    axios.get(`${BASE}/indicators/IPv4/${ip}/general`,    { headers: headers(), ...TIMEOUT }),
-    axios.get(`${BASE}/indicators/IPv4/${ip}/reputation`, { headers: headers(), ...TIMEOUT }),
+    axios.get(`${BASE}/indicators/IPv4/${pathSegment(ip)}/general`,    { headers: headers(), ...TIMEOUT, signal }),
+    axios.get(`${BASE}/indicators/IPv4/${pathSegment(ip)}/reputation`, { headers: headers(), ...TIMEOUT, signal }),
   ]);
 
   // /general failure is a real error — surface it.
@@ -38,10 +39,10 @@ async function scanIp(ip) {
   };
 }
 
-async function scanDomain(domain) {
+async function scanDomain(domain, signal) {
   try {
-    const res = await axios.get(`${BASE}/indicators/domain/${domain}/general`,
-      { headers: headers(), ...TIMEOUT });
+    const res = await axios.get(`${BASE}/indicators/domain/${pathSegment(domain)}/general`,
+      { headers: headers(), ...TIMEOUT, signal });
     const pulses = res.data.pulse_info?.count ?? 0;
     return {
       verdict:    pulses > 5 ? "malicious" : pulses > 0 ? "suspicious" : "clean",
@@ -54,20 +55,20 @@ async function scanDomain(domain) {
   }
 }
 
-async function scanUrl(url) {
+async function scanUrl(url, signal) {
   try {
     const hostname = new URL(url).hostname;
-    return scanDomain(hostname);
+    return scanDomain(hostname, signal);
   } catch (e) {
     const msg = e.code === "ECONNABORTED" ? "otx timeout" : "otx error";
     return { verdict: "error", detail: msg };
   }
 }
 
-async function scanHash(hash) {
+async function scanHash(hash, signal) {
   try {
-    const res = await axios.get(`${BASE}/indicators/file/${hash}/general`,
-      { headers: headers(), ...TIMEOUT });
+    const res = await axios.get(`${BASE}/indicators/file/${pathSegment(hash)}/general`,
+      { headers: headers(), ...TIMEOUT, signal });
     const pulses = res.data.pulse_info?.count ?? 0;
     return {
       verdict:    pulses > 0 ? "malicious" : "clean",

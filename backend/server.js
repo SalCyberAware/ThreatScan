@@ -8,6 +8,7 @@ const cors      = require("cors");
 const helmet    = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { detectType } = require("./utils/detect");
+const { withTimeout } = require("./utils/upstream");
 
 const engines = {
   virustotal:    require("./engines/virustotal"),
@@ -107,6 +108,21 @@ function sanitizeQuery(raw) {
   return q;
 }
 
+// The indicator types a caller may request. Each maps to the engine method
+// that handles it. "auto" (what the frontend sends when its own detector found
+// nothing) and an absent type both mean "detect it here".
+const SCAN_METHODS = { url:"scanUrl", ip:"scanIp", hash:"scanHash", domain:"scanDomain" };
+
+// Returns the scan type to use, "unknown" if detection failed, or null if the
+// caller supplied a type that is not on the allowlist.
+function resolveType(userType, qLow) {
+  if (userType === undefined || userType === "" || userType === "auto")
+    return detectType(qLow);
+  if (typeof userType !== "string" || !Object.hasOwn(SCAN_METHODS, userType))
+    return null;
+  return userType;
+}
+
 function safeError(err) {
   if (!err) return "Unknown error";
   const msg = err.message || String(err);
@@ -172,10 +188,11 @@ app.get("/api/scan/stream", scanRateLimit, async (req, res) => {
   const q = sanitizeQuery(req.query.query);
   if (!q) return res.status(400).json({ error: "Invalid or missing query." });
 
-  const { type: userType } = req.query;
   const qLow = q.toLowerCase();
-  const type = userType || detectType(qLow);
+  const type = resolveType(req.query.type, qLow);
 
+  if (type === null)
+    return res.status(400).json({ error: "Invalid type." });
   if (type === "unknown")
     return res.status(400).json({ error: "Could not detect input type." });
 
@@ -206,8 +223,7 @@ app.get("/api/scan/stream", scanRateLimit, async (req, res) => {
     return res.end();
   }
 
-  const methodMap  = { url:"scanUrl", ip:"scanIp", hash:"scanHash", domain:"scanDomain" };
-  const method     = methodMap[type];
+  const method     = SCAN_METHODS[type];
   const engineList = Object.entries(engines);
 
   send("start", { query: q, type, total: engineList.length, cached: false });
@@ -230,11 +246,7 @@ app.get("/api/scan/stream", scanRateLimit, async (req, res) => {
           }
           const timeout = ENGINE_TIMEOUTS[id] || 10000;
           try {
-            const result = await Promise.race([
-              engine[method](q),
-              new Promise((_, reject) =>
-                setTimeout(() => reject(new Error(`${id} timeout`)), timeout))
-            ]);
+            const result = await withTimeout(id, signal => engine[method](q, signal), timeout);
             const r = { id, ...result };
             allResults.push(r);
             if (!clientDisconnected) send("engine", r);
@@ -305,7 +317,6 @@ app.get("/api/scan/bulk", bulkRateLimit, async (req, res) => {
   let clientDisconnected = false;
   req.on("close", () => { clientDisconnected = true; });
 
-  const methodMap = { url:"scanUrl", ip:"scanIp", hash:"scanHash", domain:"scanDomain" };
   send("start", { total: queries.length, queries });
   const results = [];
 
@@ -313,7 +324,7 @@ app.get("/api/scan/bulk", bulkRateLimit, async (req, res) => {
     if (clientDisconnected) break;
     const q      = queries[i];
     const type   = detectType(q.toLowerCase()) || "domain";
-    const method = methodMap[type];
+    const method = SCAN_METHODS[type];
     send("progress", { index: i, query: q, type, status: "scanning" });
 
     const cacheKey = `${type}:${q.toLowerCase()}`;
@@ -334,11 +345,7 @@ app.get("/api/scan/bulk", bulkRateLimit, async (req, res) => {
         }
         const timeout = ENGINE_TIMEOUTS[id] || 10000;
         try {
-          const engineResult = await Promise.race([
-            engine[method](q),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error(`${id} timeout`)), timeout))
-          ]);
+          const engineResult = await withTimeout(id, signal => engine[method](q, signal), timeout);
           allResults.push({ id, ...engineResult });
         } catch (err) {
           allResults.push({ id, verdict:"error", detail: safeError(err) });
@@ -384,7 +391,9 @@ app.post("/api/scan", scanRateLimit, async (req, res) => {
   if (!q) return res.status(400).json({ error: "Invalid or missing query." });
 
   const qLow = q.toLowerCase();
-  const type = req.body.type || detectType(qLow);
+  const type = resolveType(req.body.type, qLow);
+  if (type === null)
+    return res.status(400).json({ error: "Invalid type." });
   if (type === "unknown")
     return res.status(400).json({ error: "Could not detect input type." });
 
@@ -392,8 +401,7 @@ app.post("/api/scan", scanRateLimit, async (req, res) => {
   const cached   = getCached(cacheKey);
   if (cached) return res.json({ ...cached, cached: true });
 
-  const methodMap = { url:"scanUrl", ip:"scanIp", hash:"scanHash", domain:"scanDomain" };
-  const method    = methodMap[type];
+  const method    = SCAN_METHODS[type];
 
   const enginePromises = Object.entries(engines).map(async ([id, engine]) => {
     const keyName = ENGINE_KEYS[id];
@@ -401,11 +409,7 @@ app.post("/api/scan", scanRateLimit, async (req, res) => {
       return { id, verdict:"skipped", detail:`No API key set for ${id}` };
     const timeout = ENGINE_TIMEOUTS[id] || 10000;
     try {
-      const result = await Promise.race([
-        engine[method](q),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`${id} timeout`)), timeout))
-      ]);
+      const result = await withTimeout(id, signal => engine[method](q, signal), timeout);
       return { id, ...result };
     } catch (err) { return { id, verdict:"error", detail: safeError(err) }; }
   });

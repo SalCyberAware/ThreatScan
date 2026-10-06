@@ -102,7 +102,7 @@ describe("POST /api/scan — happy paths per detected type", () => {
     expect(res.body.type).toBe("url");
     expect(res.body.engines).toHaveLength(11);
     for (const name of ENGINE_NAMES) {
-      expect(engines[name].scanUrl).toHaveBeenCalledWith("https://example.com");
+      expect(engines[name].scanUrl).toHaveBeenCalledWith("https://example.com", expect.any(AbortSignal));
     }
   });
 
@@ -111,7 +111,7 @@ describe("POST /api/scan — happy paths per detected type", () => {
     expect(res.status).toBe(200);
     expect(res.body.type).toBe("ip");
     for (const name of ENGINE_NAMES) {
-      expect(engines[name].scanIp).toHaveBeenCalledWith("8.8.8.8");
+      expect(engines[name].scanIp).toHaveBeenCalledWith("8.8.8.8", expect.any(AbortSignal));
     }
   });
 
@@ -121,7 +121,7 @@ describe("POST /api/scan — happy paths per detected type", () => {
     expect(res.status).toBe(200);
     expect(res.body.type).toBe("hash");
     for (const name of ENGINE_NAMES) {
-      expect(engines[name].scanHash).toHaveBeenCalledWith(hash);
+      expect(engines[name].scanHash).toHaveBeenCalledWith(hash, expect.any(AbortSignal));
     }
   });
 
@@ -130,7 +130,7 @@ describe("POST /api/scan — happy paths per detected type", () => {
     expect(res.status).toBe(200);
     expect(res.body.type).toBe("domain");
     for (const name of ENGINE_NAMES) {
-      expect(engines[name].scanDomain).toHaveBeenCalledWith("example.com");
+      expect(engines[name].scanDomain).toHaveBeenCalledWith("example.com", expect.any(AbortSignal));
     }
   });
 });
@@ -526,7 +526,7 @@ describe("GET /api/scan/bulk — cache reuse mid-batch", () => {
     expect(a.data.cached).toBe(true);
     expect(b.data.cached).toBe(false);
     expect(engines.virustotal.scanDomain.mock.calls.length).toBe(callCount + 1);
-    expect(engines.virustotal.scanDomain).toHaveBeenLastCalledWith("b.com");
+    expect(engines.virustotal.scanDomain).toHaveBeenLastCalledWith("b.com", expect.any(AbortSignal));
   });
 });
 
@@ -584,5 +584,79 @@ describe("error handler", () => {
     expect(res.headers["content-type"]).toMatch(/application\/json/);
     expect(typeof res.body.error).toBe("string");
     expect(res.text).not.toMatch(/<!DOCTYPE html>|at Layer/);
+  });
+});
+
+describe("type allowlist", () => {
+  const REJECTED = ["__proto__", "constructor", "toString", "scanUrl", "URL", "file", "unknown"];
+
+  test.each(REJECTED)("GET /api/scan/stream rejects type=%s with 400 before opening the stream", async (type) => {
+    const res = await request(app).get("/api/scan/stream").query({ query: "8.8.8.8", type });
+    expect(res.status).toBe(400);
+    expect(res.headers["content-type"]).toMatch(/application\/json/);
+    expect(res.body.error).toMatch(/invalid type/i);
+    for (const name of ENGINE_NAMES) expect(engines[name].scanIp).not.toHaveBeenCalled();
+  });
+
+  test("GET /api/scan/stream rejects a repeated type parameter (array)", async () => {
+    const res = await request(app).get("/api/scan/stream?query=8.8.8.8&type=ip&type=url");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid type/i);
+  });
+
+  test.each([...REJECTED, 1, ["ip"], { a: 1 }, null])(
+    "POST /api/scan rejects type=%p with 400", async (type) => {
+      const res = await request(app).post("/api/scan").send({ query: "8.8.8.8", type });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/invalid type/i);
+      for (const name of ENGINE_NAMES) expect(engines[name].scanIp).not.toHaveBeenCalled();
+    });
+
+  test("an allowed explicit type overrides detection", async () => {
+    const res = await request(app).post("/api/scan").send({ query: "example.com", type: "url" });
+    expect(res.status).toBe(200);
+    expect(res.body.type).toBe("url");
+    expect(engines.virustotal.scanUrl).toHaveBeenCalledWith("example.com", expect.any(AbortSignal));
+  });
+
+  test.each(["auto", ""])("type=%p falls back to server-side detection", async (type) => {
+    const res = await request(app).get("/api/scan/stream").query({ query: "8.8.8.8", type });
+    expect(res.status).toBe(200);
+    expect(parseSSE(res.text)[0].data.type).toBe("ip");
+  });
+
+  test("type=auto with an undetectable query still gets the detection 400", async () => {
+    const res = await request(app).post("/api/scan").send({ query: "not-an-indicator", type: "auto" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/detect/i);
+  });
+});
+
+describe("per-engine timeout cancels the upstream request", () => {
+  // ipinfo has the shortest per-engine budget (4s). Real timers: see the note
+  // above about fake timers under supertest.
+  test("the engine's AbortSignal is aborted when its timeout fires", async () => {
+    let seen;
+    engines.ipinfo.scanIp.mockImplementation((_q, signal) => {
+      seen = signal;
+      return new Promise(() => {});
+    });
+    const res = await request(app).post("/api/scan").send({ query: "8.8.8.8" });
+    expect(res.status).toBe(200);
+    expect(res.body.engines.find(e => e.id === "ipinfo"))
+      .toMatchObject({ verdict: "error", detail: "ipinfo timeout" });
+    expect(seen).toBeInstanceOf(AbortSignal);
+    expect(seen.aborted).toBe(true);
+  }, 10000);
+
+  test("engines that finish in time are not aborted", async () => {
+    const signals = [];
+    engines.virustotal.scanIp.mockImplementation(async (_q, signal) => {
+      signals.push(signal);
+      return { verdict: "clean" };
+    });
+    await request(app).get("/api/scan/stream").query({ query: "8.8.8.8" });
+    expect(signals).toHaveLength(1);
+    expect(signals[0].aborted).toBe(false);
   });
 });

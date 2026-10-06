@@ -1,9 +1,11 @@
 const axios = require("axios");
+const { DEFAULT_TIMEOUT, pathSegment } = require("../utils/upstream");
 const KEY = () => process.env.IPINFO_KEY;
 
-async function scanIp(ip) {
-  const res = await axios.get(`https://ipinfo.io/${ip}/json`, {
-    params: { token: KEY() }
+async function scanIp(ip, signal) {
+  const res = await axios.get(`https://ipinfo.io/${pathSegment(ip)}/json`, {
+    params: { token: KEY() },
+    timeout: DEFAULT_TIMEOUT, signal,
   });
   const d = res.data;
   return {

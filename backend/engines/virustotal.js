@@ -1,4 +1,5 @@
 const axios = require("axios");
+const { DEFAULT_TIMEOUT, pathSegment } = require("../utils/upstream");
 const BASE = "https://www.virustotal.com/api/v3";
 const KEY  = () => process.env.VT_API_KEY;
 const URL_RE  = /^https?:\/\/.+/i;
@@ -10,11 +11,11 @@ function b64url(str) {
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-async function scanUrl(url) {
+async function scanUrl(url, signal) {
   if (!URL_RE.test(url)) return { verdict:"info", detail:"URL-only engine" };
   const headers = { "x-apikey": KEY() };
   try {
-    const cached = await axios.get(`${BASE}/urls/${b64url(url)}`, { headers, timeout:8000 });
+    const cached = await axios.get(`${BASE}/urls/${b64url(url)}`, { headers, timeout:8000, signal });
     const stats  = cached.data?.data?.attributes?.last_analysis_stats;
     if (stats) return formatStats(stats);
   } catch (e) {
@@ -23,13 +24,15 @@ async function scanUrl(url) {
   const submit = await axios.post(
     `${BASE}/urls`,
     `url=${encodeURIComponent(url)}`,
-    { headers: { ...headers, "Content-Type":"application/x-www-form-urlencoded" } }
+    { headers: { ...headers, "Content-Type":"application/x-www-form-urlencoded" },
+      timeout: DEFAULT_TIMEOUT, signal }
   );
   const analysisId = submit.data.data.id;
   for (let i = 0; i < 6; i++) {
     await new Promise(r => setTimeout(r, 3000));
+    if (signal?.aborted) break;
     try {
-      const report = await axios.get(`${BASE}/analyses/${analysisId}`, { headers, timeout:8000 });
+      const report = await axios.get(`${BASE}/analyses/${analysisId}`, { headers, timeout:8000, signal });
       const attrs  = report.data.data.attributes;
       if (attrs.status === "completed" && attrs.stats) return formatStats(attrs.stats);
     } catch {}
@@ -37,26 +40,26 @@ async function scanUrl(url) {
   return { verdict:"info", detail:"Analysis still in progress — try again shortly" };
 }
 
-async function scanHash(hash) {
+async function scanHash(hash, signal) {
   if (!HASH_RE.test(hash)) return { verdict:"info", detail:"Hash-only engine" };
-  const res = await axios.get(`${BASE}/files/${hash}`,
-    { headers:{ "x-apikey":KEY() }, timeout:8000 });
+  const res = await axios.get(`${BASE}/files/${pathSegment(hash)}`,
+    { headers:{ "x-apikey":KEY() }, timeout:8000, signal });
   return formatStats(res.data.data.attributes.last_analysis_stats);
 }
 
-async function scanDomain(domain) {
+async function scanDomain(domain, signal) {
   if (URL_RE.test(domain) || IPV4_RE.test(domain))
     return { verdict:"info", detail:"Use URL or IP tab instead" };
-  const res = await axios.get(`${BASE}/domains/${domain}`,
-    { headers:{ "x-apikey":KEY() }, timeout:8000 });
+  const res = await axios.get(`${BASE}/domains/${pathSegment(domain)}`,
+    { headers:{ "x-apikey":KEY() }, timeout:8000, signal });
   return formatStats(res.data.data.attributes.last_analysis_stats);
 }
 
-async function scanIp(ip) {
+async function scanIp(ip, signal) {
   if (URL_RE.test(ip) || (!IPV4_RE.test(ip) && !ip.includes(":")))
     return { verdict:"info", detail:"Use URL or Domain tab instead" };
-  const res = await axios.get(`${BASE}/ip_addresses/${ip}`,
-    { headers:{ "x-apikey":KEY() }, timeout:8000 });
+  const res = await axios.get(`${BASE}/ip_addresses/${pathSegment(ip)}`,
+    { headers:{ "x-apikey":KEY() }, timeout:8000, signal });
   return formatStats(res.data.data.attributes.last_analysis_stats);
 }
 

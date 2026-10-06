@@ -10,12 +10,14 @@
 const axios = require("axios");
 const TIMEOUT = { timeout: 8000 };
 
-async function scanDomain(domain) {
+async function scanDomain(domain, signal) {
   const results = {};
+  const name    = encodeURIComponent(domain);
+  const opts    = { ...TIMEOUT, signal };
 
   // ── WHOIS ──────────────────────────────────────────────────────────────────
   try {
-    const res  = await axios.get(`https://whoisjson.com/api/v1/whois?domain=${domain}`, TIMEOUT);
+    const res  = await axios.get(`https://whoisjson.com/api/v1/whois?domain=${name}`, opts);
     const data = res.data;
     results.registrar  = data.registrar        || null;
     results.created    = data.creation_date    || null;
@@ -27,14 +29,14 @@ async function scanDomain(domain) {
   // ── DNS (A records) ────────────────────────────────────────────────────────
   try {
     const res = await axios.get(
-      `https://dns.google/resolve?name=${domain}&type=A`, TIMEOUT);
+      `https://dns.google/resolve?name=${name}&type=A`, opts);
     results.aRecords = res.data.Answer?.map(r => r.data).slice(0, 4) || [];
   } catch {}
 
   // ── DNS (MX records) ───────────────────────────────────────────────────────
   try {
     const res = await axios.get(
-      `https://dns.google/resolve?name=${domain}&type=MX`, TIMEOUT);
+      `https://dns.google/resolve?name=${name}&type=MX`, opts);
     results.mxRecords = res.data.Answer?.map(r => r.data).slice(0, 3) || [];
   } catch {}
 
@@ -54,10 +56,10 @@ async function scanDomain(domain) {
   };
 }
 
-async function scanUrl(url) {
+async function scanUrl(url, signal) {
   try {
     const hostname = new URL(url).hostname;
-    return scanDomain(hostname);
+    return scanDomain(hostname, signal);
   } catch {
     return { verdict:"info", detail:"Invalid URL" };
   }

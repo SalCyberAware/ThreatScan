@@ -1,11 +1,13 @@
 const axios = require("axios");
+const { DEFAULT_TIMEOUT, pathSegment } = require("../utils/upstream");
 const BASE = "https://api.greynoise.io/v3";
 const KEY  = () => process.env.GREYNOISE_KEY;
 
-async function scanIp(ip) {
+async function scanIp(ip, signal) {
   try {
-    const res = await axios.get(`${BASE}/community/${ip}`, {
-      headers: { key: KEY() }
+    const res = await axios.get(`${BASE}/community/${pathSegment(ip)}`, {
+      headers: { key: KEY() },
+      timeout: DEFAULT_TIMEOUT, signal,
     });
     const d = res.data;
     return {
