@@ -22,11 +22,11 @@ function handleError(err) {
   return { verdict: "info", detail: `URLhaus error: ${err.message?.slice(0, 80)}` };
 }
 
-async function scanUrl(url) {
+async function scanUrl(url, signal) {
   try {
     const res = await axios.post(`${BASE}/url/`,
       buildParams({ url }),
-      { headers: { "Content-Type": "application/x-www-form-urlencoded" }, ...TIMEOUT });
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" }, ...TIMEOUT, signal });
     const d = res.data;
     if (d.query_status === "no_results")
       return { verdict: "clean", detail: "Not found in URLhaus" };
@@ -51,11 +51,11 @@ async function scanUrl(url) {
   }
 }
 
-async function scanDomain(domain) {
+async function scanDomain(domain, signal) {
   try {
     const res = await axios.post(`${BASE}/host/`,
       buildParams({ host: domain }),
-      { headers: { "Content-Type": "application/x-www-form-urlencoded" }, ...TIMEOUT });
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" }, ...TIMEOUT, signal });
     const d = res.data;
     if (d.query_status === "no_results")
       return { verdict: "clean", detail: "Not found in URLhaus" };
@@ -71,13 +71,13 @@ async function scanDomain(domain) {
   }
 }
 
-async function scanHash(hash) {
+async function scanHash(hash, signal) {
   if (hash.length !== 64)
     return { verdict: "info", detail: "URLhaus supports SHA256 only" };
   try {
     const res = await axios.post(`${BASE}/payload/`,
       buildParams({ sha256_hash: hash }),
-      { headers: { "Content-Type": "application/x-www-form-urlencoded" }, ...TIMEOUT });
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" }, ...TIMEOUT, signal });
     const d = res.data;
     if (d.query_status === "no_results")
       return { verdict: "clean", detail: "Not found in URLhaus" };
