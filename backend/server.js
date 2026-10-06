@@ -323,9 +323,18 @@ app.get("/api/scan/bulk", bulkRateLimit, async (req, res) => {
   for (let i = 0; i < queries.length; i++) {
     if (clientDisconnected) break;
     const q      = queries[i];
-    const type   = detectType(q.toLowerCase()) || "domain";
+    const type   = detectType(q.toLowerCase());
     const method = SCAN_METHODS[type];
     send("progress", { index: i, query: q, type, status: "scanning" });
+
+    // Input that matches no indicator type gets its own "invalid" row: no
+    // engine calls, no score and no cache entry. The single-scan routes reject
+    // the same input with 400; here the rest of the batch keeps running.
+    if (!method) {
+      const result = { index: i, query: q, type, verdict: "invalid",
+        detail: "Could not detect input type.", cached: false };
+      results.push(result); send("result", result); continue;
+    }
 
     const cacheKey = `${type}:${q.toLowerCase()}`;
     const cached   = getCached(cacheKey);
@@ -376,6 +385,7 @@ app.get("/api/scan/bulk", bulkRateLimit, async (req, res) => {
       malicious: results.filter(r => r.verdict === "malicious").length,
       suspicious: results.filter(r => r.verdict === "suspicious").length,
       clean: results.filter(r => r.verdict === "clean").length,
+      invalid: results.filter(r => r.verdict === "invalid").length,
       results,
     });
   }

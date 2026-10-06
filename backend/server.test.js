@@ -472,6 +472,53 @@ describe("GET /api/scan/bulk — query parsing", () => {
   });
 });
 
+// Issue #31: detectType returns the truthy string "unknown", so the old
+// `|| "domain"` fallback never fired. Every engine was called with an undefined
+// method, all of them errored, calcScore returned 0 and the row was reported
+// (and cached) as "clean" for input no engine ever looked at.
+describe("GET /api/scan/bulk — undetectable input", () => {
+  // Each request comes from its own client address so these tests do not spend
+  // the bulk rate-limit budget (10 per 15 minutes) the later bulk tests rely on.
+  let client = 0;
+  const bulk = queries => request(app).get("/api/scan/bulk")
+    .set("X-Forwarded-For", `198.51.100.${100 + client++}`).query({ queries });
+  const allMethodCalls = () => ENGINE_NAMES.reduce((n, name) =>
+    n + ["scanUrl","scanIp","scanHash","scanDomain"]
+      .reduce((m, method) => m + engines[name][method].mock.calls.length, 0), 0);
+
+  test.each(["=1+1", "@SUM(1)", "localhost"])(
+    "%s yields an 'invalid' row with no score, no engine calls and no cache entry",
+    async (query) => {
+      const res = await bulk(query);
+      expect(res.status).toBe(200);
+
+      const result = parseSSE(res.text).find(e => e.event === "result");
+      expect(result.data).toEqual({
+        index: 0, query, type: "unknown", verdict: "invalid",
+        detail: "Could not detect input type.", cached: false,
+      });
+      expect(result.data).not.toHaveProperty("score");
+      expect(allMethodCalls()).toBe(0);
+      expect(cache.size).toBe(0);
+    }
+  );
+
+  test("invalid rows sit beside scanned ones and are tallied apart from clean", async () => {
+    const res = await bulk("=1+1\n@SUM(1)\nlocalhost\nexample.com");
+    const events  = parseSSE(res.text);
+    const results = events.filter(e => e.event === "result").map(e => e.data);
+
+    expect(results.map(r => r.verdict)).toEqual(["invalid", "invalid", "invalid", "clean"]);
+    expect(results[3]).toMatchObject({ query: "example.com", type: "domain", score: expect.any(Number) });
+    expect(engines.virustotal.scanDomain).toHaveBeenCalledTimes(1);
+    expect(engines.virustotal.scanDomain).toHaveBeenCalledWith("example.com", expect.any(AbortSignal));
+
+    const done = events.find(e => e.event === "done").data;
+    expect(done).toMatchObject({ total: 4, malicious: 0, suspicious: 0, clean: 1, invalid: 3 });
+    expect([...cache.keys()]).toEqual(["domain:example.com"]);
+  });
+});
+
 describe("CORS origin rejection", () => {
   // Note: allowedOrigins is computed at module load (server.js:118), so setting
   // FRONTEND_URL here has no effect. The default allowlist is ["http://localhost:5173"],
