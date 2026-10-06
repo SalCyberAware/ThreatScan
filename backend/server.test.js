@@ -476,7 +476,7 @@ describe("GET /api/scan/bulk — query parsing", () => {
 // `|| "domain"` fallback never fired. Every engine was called with an undefined
 // method, all of them errored, calcScore returned 0 and the row was reported
 // (and cached) as "clean" for input no engine ever looked at.
-describe("GET /api/scan/bulk — undetectable input", () => {
+describe("GET /api/scan/bulk, undetectable input", () => {
   // Each request comes from its own client address so these tests do not spend
   // the bulk rate-limit budget (10 per 15 minutes) the later bulk tests rely on.
   let client = 0;
