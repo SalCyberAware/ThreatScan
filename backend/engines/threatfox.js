@@ -21,8 +21,12 @@ async function query(body, signal) {
   return res.data;
 }
 
+// search_ioc, not search_hash: search_hash returns network indicators linked
+// to a sample, so a hash that is itself a ThreatFox indicator comes back
+// no_result. search_ioc matches the hash as an indicator value, the same way
+// scanIp and scanUrl look up theirs.
 async function scanHash(hash, signal) {
-  const data = await query({ query: "search_hash", hash }, signal);
+  const data = await query({ query: "search_ioc", search_term: hash }, signal);
   if (data.query_status === "no_result") return { verdict: "clean" };
   const ioc = data.data?.[0];
   return {

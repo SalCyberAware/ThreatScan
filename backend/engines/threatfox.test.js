@@ -129,3 +129,37 @@ describe("threatfox authentication and failure handling", () => {
     await expect(tf.scanIp("1.2.3.4")).rejects.toThrow(/unexpected response/);
   });
 });
+
+describe("threatfox.scanHash looks the hash up as an indicator", () => {
+  const SHA256 = "96af1d0c3ed78e44ac3f75665b7483e77ff451daa2ec01966299b0686bc3c49b";
+  beforeEach(() => axios.post.mockReset());
+
+  test("a hash found by search_ioc is 'malicious'", async () => {
+    axios.post.mockResolvedValueOnce({ data: {
+      query_status: "ok",
+      data: [{ ioc: SHA256, ioc_type: "sha256_hash", malware_printable: "Unknown Loader",
+               malware: "win.unknown_loader", confidence_level: 100, tags: ["loader"] }],
+    } });
+    const result = await tf.scanHash(SHA256);
+    expect(result.verdict).toBe("malicious");
+    expect(result.malware).toBe("win.unknown_loader");
+    expect(result.confidence).toBe(100);
+    expect(result.tags).toEqual(["loader"]);
+    expect(axios.post).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(axios.post.mock.calls[0][1])).toEqual({ query: "search_ioc", search_term: SHA256 });
+  });
+
+  test("no_result from search_ioc is 'clean' with no search_hash fallback", async () => {
+    axios.post.mockResolvedValueOnce({ data: { query_status: "no_result" } });
+    expect((await tf.scanHash(SHA256)).verdict).toBe("clean");
+    expect(axios.post).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(axios.post.mock.calls[0][1]).query).toBe("search_ioc");
+  });
+
+  test("errors from search_ioc still propagate", async () => {
+    const err = new Error("Request failed with status code 403");
+    err.response = { status: 403 };
+    axios.post.mockRejectedValueOnce(err);
+    await expect(tf.scanHash(SHA256)).rejects.toThrow("403");
+  });
+});
