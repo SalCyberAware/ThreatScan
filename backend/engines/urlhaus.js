@@ -1,15 +1,18 @@
 /**
  * URLhaus Engine (abuse.ch)
- * Free public lookups - rate limited
+ * Requires the shared abuse.ch Auth-Key (see utils/abusech.js)
  */
 const axios = require("axios");
+const { authHeaders } = require("../utils/abusech");
 const BASE    = "https://urlhaus-api.abuse.ch/v1";
-const KEY     = () => process.env.URLHAUS_KEY;
 const TIMEOUT = { timeout: 8000 };
 
 function buildParams(base) {
-  // Auth key optional for URL lookups — URLhaus rate limits keyed requests
   return new URLSearchParams(base).toString();
+}
+
+function headers() {
+  return { "Content-Type": "application/x-www-form-urlencoded", ...authHeaders() };
 }
 
 function handleError(err) {
@@ -26,7 +29,7 @@ async function scanUrl(url, signal) {
   try {
     const res = await axios.post(`${BASE}/url/`,
       buildParams({ url }),
-      { headers: { "Content-Type": "application/x-www-form-urlencoded" }, ...TIMEOUT, signal });
+      { headers: headers(), ...TIMEOUT, signal });
     const d = res.data;
     if (d.query_status === "no_results")
       return { verdict: "clean", detail: "Not found in URLhaus" };
@@ -55,7 +58,7 @@ async function scanDomain(domain, signal) {
   try {
     const res = await axios.post(`${BASE}/host/`,
       buildParams({ host: domain }),
-      { headers: { "Content-Type": "application/x-www-form-urlencoded" }, ...TIMEOUT, signal });
+      { headers: headers(), ...TIMEOUT, signal });
     const d = res.data;
     if (d.query_status === "no_results")
       return { verdict: "clean", detail: "Not found in URLhaus" };
@@ -77,7 +80,7 @@ async function scanHash(hash, signal) {
   try {
     const res = await axios.post(`${BASE}/payload/`,
       buildParams({ sha256_hash: hash }),
-      { headers: { "Content-Type": "application/x-www-form-urlencoded" }, ...TIMEOUT, signal });
+      { headers: headers(), ...TIMEOUT, signal });
     const d = res.data;
     if (d.query_status === "no_results")
       return { verdict: "clean", detail: "Not found in URLhaus" };

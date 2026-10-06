@@ -75,7 +75,7 @@ ThreatScan is a free, open-source alternative to VirusTotal. Instead of sending 
 | IPInfo | IP | 50,000/month | ✅ |
 | URLhaus (abuse.ch) | URL, Domain, Hash | Unlimited | ✅ |
 | Google SafeBrowse | URL, Domain | 10,000/day | ✅ |
-| ThreatFox | All | Unlimited | ❌ |
+| ThreatFox | All | Unlimited | ✅ |
 | WHOIS / DNS | URL, Domain | Unlimited | ❌ |
 
 ---
@@ -137,8 +137,7 @@ All keys are free. Get them here:
 | `OTX_KEY` | [otx.alienvault.com](https://otx.alienvault.com) → Settings → OTX Key |
 | `GREYNOISE_KEY` | [greynoise.io](https://greynoise.io) → Account → API |
 | `IPINFO_KEY` | [ipinfo.io](https://ipinfo.io) → Token |
-| `MALWAREBAZAAR_KEY` | [bazaar.abuse.ch](https://bazaar.abuse.ch) → Profile → Generate Key |
-| `URLHAUS_KEY` | [bazaar.abuse.ch](https://bazaar.abuse.ch) → Profile → Generate Key (same as MalwareBazaar) |
+| `MALWAREBAZAAR_KEY` | [bazaar.abuse.ch](https://bazaar.abuse.ch) → Profile → Generate Key. One abuse.ch key covers MalwareBazaar, URLhaus and ThreatFox; it is sent as the `Auth-Key` header. |
 | `GSB_KEY` | [console.cloud.google.com](https://console.cloud.google.com) → Safe Browsing API |
 
 ---

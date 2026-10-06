@@ -12,10 +12,12 @@ async function scanUrl(url, signal) {
       threatEntries:    [{ url }],
     },
   };
+  // The key goes in a header, not the query string, so it is never part of a
+  // URL that an error message, proxy or request log might record.
   const res = await axios.post(
-    `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${KEY()}`,
+    "https://safebrowsing.googleapis.com/v4/threatMatches:find",
     body,
-    { timeout: DEFAULT_TIMEOUT, signal }
+    { headers: { "x-goog-api-key": KEY() }, timeout: DEFAULT_TIMEOUT, signal }
   );
   const matches = res.data.matches ?? [];
   if (matches.length === 0) return { verdict: "clean", threats: [] };

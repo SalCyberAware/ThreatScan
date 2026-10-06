@@ -159,6 +159,18 @@ describe("POST /api/scan — skipped engines when API key is absent", () => {
   });
 });
 
+describe("POST /api/scan: abuse.ch engines without the shared key", () => {
+  test("URLhaus and ThreatFox are skipped, not called, when MALWAREBAZAAR_KEY is unset", async () => {
+    delete process.env.MALWAREBAZAAR_KEY;
+    const res = await request(app).post("/api/scan").send({ query: "https://example.com" });
+    for (const id of ["urlhaus", "threatfox"]) {
+      const r = res.body.engines.find(e => e.id === id);
+      expect(r.verdict).toBe("skipped");
+      expect(engines[id].scanUrl).not.toHaveBeenCalled();
+    }
+  });
+});
+
 describe("POST /api/scan — score aggregation", () => {
   test("every engine malicious → score capped at 100, verdict 'malicious'", async () => {
     for (const name of ENGINE_NAMES) {
@@ -194,7 +206,20 @@ describe("GET /api/health", () => {
     const res = await request(app).get("/api/health");
     expect(res.body.engines.virustotal).toBe("active");
     expect(res.body.engines.abuseipdb).toMatch(/inactive/);
-    expect(res.body.engines.urlhaus).toMatch(/no key/i);
+    expect(res.body.engines.whois).toMatch(/no key/i);
+  });
+
+  test("URLhaus and ThreatFox report the shared abuse.ch key's status", async () => {
+    process.env.MALWAREBAZAAR_KEY = "set";
+    let res = await request(app).get("/api/health");
+    expect(res.body.engines.urlhaus).toBe("active");
+    expect(res.body.engines.threatfox).toBe("active");
+
+    delete process.env.MALWAREBAZAAR_KEY;
+    res = await request(app).get("/api/health");
+    expect(res.body.engines.urlhaus).toMatch(/inactive/);
+    expect(res.body.engines.threatfox).toMatch(/inactive/);
+    expect(res.body.engines.malwarebazaar).toMatch(/inactive/);
   });
 
   test("cacheSize reflects actual cache state after a scan", async () => {
