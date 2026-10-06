@@ -296,6 +296,47 @@ describe("CSV export", () => {
       query, "domain", "malicious", "90", "3", "1", "0", "false",
     ]);
   });
+
+  // Formula injection: a cell starting with =, +, -, @, tab or CR is run as a
+  // formula by spreadsheets. The bulk endpoint echoes undetectable input such
+  // as "=1+1" back as a result row, so the query column is attacker text.
+  async function exportQuery(query) {
+    const blobs = captureDownload();
+    renderBulk();
+    const source = startBulk(["8.8.8.8"]);
+    source.emit("start", { queries: ["8.8.8.8"] });
+    source.emit("result", {
+      index: 0, query, type: "unknown", verdict: "clean",
+      score: 0, malicious: 0, suspicious: 0, clean: 0, cached: false,
+    });
+    source.emit("done", { total: 1, malicious: 0, suspicious: 0, clean: 1 });
+    fireEvent.click(screen.getByRole("button", { name: /EXPORT CSV/ }));
+    return blobs[0].text();
+  }
+
+  it.each([
+    ["=", '=HYPERLINK("http://evil.example","x")'],
+    ["+", "+1+cmd|' /C calc'!A0"],
+    ["-", "-2+3"],
+    ["@", "@SUM(1+1)"],
+    ["tab", "\t=1+1"],
+    ["carriage return", "\r=1+1"],
+  ])("neutralizes a cell starting with %s: apostrophe prefix and quoted", async (_label, query) => {
+    const csv = await exportQuery(query);
+    const dataLine = csv.slice(csv.indexOf("\n") + 1);
+    expect(dataLine.startsWith(`"'${query.replace(/"/g, '""')}"`)).toBe(true);
+    // Parsed back, the cell is the original text behind one apostrophe, and the
+    // row keeps its eight columns.
+    const records = parseCSV(csv);
+    expect(records).toHaveLength(2);
+    expect(records[1]).toHaveLength(8);
+    expect(records[1][0]).toBe(`'${query}`);
+  });
+
+  it("leaves ordinary fields and mid-string formula characters untouched", async () => {
+    const csv = await exportQuery("evil-site.com");
+    expect(csv.split("\n")[1]).toBe("evil-site.com,unknown,clean,0,0,0,0,false");
+  });
 });
 
 /** Minimal RFC 4180 reader, so the export is checked by parsing rather than by

@@ -269,8 +269,16 @@ const EngineCard = ({ engineId, data, status }) => {
 // permits -- so an ordinary row stays readable and only the risky ones grow
 // quotes. Without this, one comma in a query shifted every later column in that
 // row, silently corrupting the export rather than failing it.
+//
+// Formula injection (OWASP "CSV Injection"): a spreadsheet treats a cell that
+// starts with =, +, -, @, tab or carriage return as a formula. Queries are
+// attacker-controllable text (bulk returns undetectable input like "=1+1"
+// as a row), so such a field gets a leading apostrophe, which makes the cell
+// literal text, and is always quoted.
+const FORMULA_START = /^[=+\-@\t\r]/;
 const csvField = (value) => {
   const s = String(value ?? "");
+  if (FORMULA_START.test(s)) return `"'${s.replace(/"/g, '""')}"`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
