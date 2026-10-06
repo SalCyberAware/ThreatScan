@@ -170,6 +170,69 @@ describe("bulk results", () => {
   });
 });
 
+// Issue #31: input matching no indicator type comes back as an "invalid" row
+// with no score. It must never render or export as clean.
+const INVALID = ["=1+1", "@SUM(1)", "localhost"];
+const invalidRow = (index, query) => ({
+  index, query, type: "unknown", verdict: "invalid",
+  detail: "Could not detect input type.", cached: false,
+});
+
+/** Stream the three undetectable queries plus one scanned domain, then finish. */
+function streamMixedBatch() {
+  const queries = [...INVALID, "example.com"];
+  const source = startBulk(queries);
+  source.emit("start", { queries });
+  INVALID.forEach((q, i) => source.emit("result", invalidRow(i, q)));
+  source.emit("result", {
+    index: 3, query: "example.com", type: "domain", verdict: "clean",
+    score: 0, malicious: 0, suspicious: 0, clean: 7, cached: false,
+  });
+  source.emit("done", { total: 4, malicious: 0, suspicious: 0, clean: 1, invalid: 3 });
+  return source;
+}
+
+describe("bulk invalid rows", () => {
+  it.each(INVALID.map((q, i) => [q, i]))(
+    "%s shows an INVALID badge, the reason and no score",
+    (query, i) => {
+      renderBulk();
+      streamMixedBatch();
+      const row = within(rows()[i]);
+      expect(row.getByText(query)).toBeInTheDocument();
+      expect(row.getByText("INVALID")).toBeInTheDocument();
+      expect(row.getByText("Could not detect input type.")).toBeInTheDocument();
+      expect(row.getByText("UNKNOWN")).toBeInTheDocument();
+      expect(row.queryByText("CLEAN")).not.toBeInTheDocument();
+      expect(row.queryByText("0")).not.toBeInTheDocument();
+      expect(row.getByText("—", { selector: "td" })).toBeInTheDocument();
+    }
+  );
+
+  it("keeps the scanned row normal and tallies invalid apart from clean", () => {
+    renderBulk();
+    streamMixedBatch();
+    const last = within(rows()[3]);
+    expect(last.getByText("CLEAN")).toBeInTheDocument();
+    expect(last.getByText("0")).toBeInTheDocument();
+    expect(last.queryByText("Could not detect input type.")).not.toBeInTheDocument();
+
+    const bar = within(screen.getByText("SCAN COMPLETE — 4 QUERIES").parentElement);
+    const tally = label => bar.getByText(label).previousSibling.textContent;
+    expect(tally("CLEAN")).toBe("1");
+    expect(tally("INVALID")).toBe("3");
+  });
+
+  it("omits the INVALID tally when every query was scannable", () => {
+    renderBulk();
+    const source = startBulk(["8.8.8.8"]);
+    source.emit("start", { queries: ["8.8.8.8"] });
+    source.emit("result", { index: 0, type: "ip", verdict: "clean", score: 0 });
+    source.emit("done", { total: 1, malicious: 0, suspicious: 0, clean: 1, invalid: 0 });
+    expect(screen.queryByText("INVALID")).not.toBeInTheDocument();
+  });
+});
+
 describe("bulk error state", () => {
   it("surfaces a connection failure and re-enables the button", () => {
     renderBulk();
@@ -336,6 +399,32 @@ describe("CSV export", () => {
   it("leaves ordinary fields and mid-string formula characters untouched", async () => {
     const csv = await exportQuery("evil-site.com");
     expect(csv.split("\n")[1]).toBe("evil-site.com,unknown,clean,0,0,0,0,false");
+  });
+});
+
+describe("CSV export of invalid rows", () => {
+  it("writes verdict invalid with empty score and counts, and neutralizes formulas", async () => {
+    const blobs = [];
+    URL.createObjectURL = vi.fn((blob) => { blobs.push(blob); return "blob:threatscan"; });
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    renderBulk();
+    streamMixedBatch();
+    fireEvent.click(screen.getByRole("button", { name: /EXPORT CSV/ }));
+    const csv = await blobs[0].text();
+
+    expect(csv).toBe(
+      "Query,Type,Verdict,Score,Malicious,Suspicious,Clean,Cached\n" +
+      `"'=1+1",unknown,invalid,,,,,false\n` +
+      `"'@SUM(1)",unknown,invalid,,,,,false\n` +
+      "localhost,unknown,invalid,,,,,false\n" +
+      "example.com,domain,clean,0,0,0,7,false"
+    );
+    const records = parseCSV(csv);
+    expect(records.slice(1, 4).map(r => [r[0], r[2], r[3]])).toEqual([
+      ["'=1+1", "invalid", ""], ["'@SUM(1)", "invalid", ""], ["localhost", "invalid", ""],
+    ]);
   });
 });
 

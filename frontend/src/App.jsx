@@ -153,6 +153,7 @@ const Badge = ({ verdict, size="sm" }) => {
     info:       { bg:"#4fa3ff15", border:"#4fa3ff", text:"#4fa3ff", label:"INFO"       },
     skipped:    { bg:"#3d4a6620", border:"#3d4a66", text:"#3d4a66", label:"SKIPPED"    },
     error:      { bg:"#ff335510", border:"#553333", text:"#996666", label:"ERROR"      },
+    invalid:    { bg:"#ff8c4215", border:"#ff8c42", text:"#ff8c42", label:"INVALID"    },
     scanning:   { bg:"#9b72ff15", border:"#9b72ff", text:"#9b72ff", label:"SCANNING…"  },
   };
   const c = MAP[verdict] || MAP.info;
@@ -336,9 +337,13 @@ const BulkScan = () => {
     if (!results.length) return;
     const rows = [["Query","Type","Verdict","Score","Malicious","Suspicious","Clean","Cached"]];
     results.forEach(r => {
-      if (r.status === "done") {
-        rows.push([r.query, r.type, r.verdict, r.score, r.malicious, r.suspicious, r.clean, r.cached]);
-      }
+      if (r.status !== "done") return;
+      // An invalid row was never scanned: its score and engine counts stay
+      // empty rather than reading as a 0 that looks like a clean result.
+      const counts = r.verdict === "invalid"
+        ? ["", "", "", ""]
+        : [r.score, r.malicious, r.suspicious, r.clean];
+      rows.push([r.query, r.type, r.verdict, ...counts, r.cached]);
     });
     const csv = rows.map(r => r.map(csvField).join(",")).join("\n");
     const blob = new Blob([csv], { type:"text/csv" });
@@ -417,6 +422,8 @@ const BulkScan = () => {
             { label:"MALICIOUS",  val:summary.malicious,  color:"#ff3355" },
             { label:"SUSPICIOUS", val:summary.suspicious, color:"#ffd700" },
             { label:"CLEAN",      val:summary.clean,      color:"#00ff88" },
+            // Rows no engine scanned (input matched no indicator type).
+            ...(summary.invalid ? [{ label:"INVALID", val:summary.invalid, color:"#ff8c42" }] : []),
           ].map(({ label, val, color }) => (
             <div key={label} style={{ display:"flex", alignItems:"center", gap:6 }}>
               <span style={{ fontFamily:"var(--mono)", fontSize:18, fontWeight:700, color }}>{val}</span>
@@ -447,6 +454,9 @@ const BulkScan = () => {
                   <td style={{ fontFamily:"var(--mono)", fontSize:11,
                     maxWidth:300, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                     {r.query}
+                    {r.verdict === "invalid" && r.detail && (
+                      <div style={{ color:"#ff8c42", fontSize:10, marginTop:2 }}>{r.detail}</div>
+                    )}
                   </td>
                   <td style={{ color:"var(--text3)", fontSize:10 }}>
                     {r.type ? r.type.toUpperCase() : "—"}
@@ -458,8 +468,9 @@ const BulkScan = () => {
                     }
                   </td>
                   <td style={{ fontFamily:"var(--mono)", fontSize:13, fontWeight:700,
-                    color: r.score >= 50 ? "#ff3355" : r.score >= 20 ? "#ffd700" : "#00ff88" }}>
-                    {r.status === "scanning" ? "—" : `${r.score ?? 0}`}
+                    color: r.verdict === "invalid" ? "var(--text3)"
+                      : r.score >= 50 ? "#ff3355" : r.score >= 20 ? "#ffd700" : "#00ff88" }}>
+                    {r.status === "scanning" || r.verdict === "invalid" ? "—" : `${r.score ?? 0}`}
                   </td>
                 </tr>
               ))}
