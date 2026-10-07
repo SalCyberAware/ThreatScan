@@ -680,6 +680,16 @@ describe("error handler", () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
+  test("a body over the 10kb limit gets a 413, not a 500", async () => {
+    const res = await request(app)
+      .post("/api/scan")
+      .set("Content-Type", "application/json")
+      .send(JSON.stringify({ query: "a".repeat(11 * 1024) }));
+    expect(res.status).toBe(413);
+    expect(res.body).toEqual({ error: "Request body too large." });
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
   test.each([
     ["GET",  "/api/does-not-exist"],
     ["POST", "/api/health"],

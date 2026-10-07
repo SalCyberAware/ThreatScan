@@ -142,6 +142,92 @@ describe("trust proxy 1 (Railway's single edge proxy)", () => {
   });
 });
 
+// Production keys on X-Real-IP. server.js reads NODE_ENV once at load, so
+// these tests use a fresh production copy of the app, which also gives them
+// their own limiter stores.
+describe("production keys on X-Real-IP (Railway's edge sets it)", () => {
+  const saved = { NODE_ENV: process.env.NODE_ENV, FRONTEND_URL: process.env.FRONTEND_URL };
+  let prodApp;
+
+  beforeAll(() => {
+    process.env.NODE_ENV = "production";
+    process.env.FRONTEND_URL = "https://frontend.example";
+    jest.isolateModules(() => { prodApp = require("./server").app; });
+  });
+
+  afterAll(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  // realIp undefined sends no X-Real-IP header at all.
+  const prodBulk = (realIp, xff) => {
+    const req = request(prodApp).get("/api/scan/bulk").set("X-Forwarded-For", xff);
+    return realIp === undefined ? req : req.set("X-Real-IP", realIp);
+  };
+  const prodScan = (realIp, xff) =>
+    request(prodApp).post("/api/scan").set("X-Real-IP", realIp).set("X-Forwarded-For", xff).send({});
+
+  test("different X-Real-IP values get separate buckets behind one shared hop", async () => {
+    const hop = "10.0.0.1";
+    await exhaust(ip => prodBulk(ip, hop), "198.51.100.60", BULK_LIMIT);
+    expect429(await prodBulk("198.51.100.60", hop), BULK_LIMIT, BULK_MESSAGE);
+
+    const other = await prodBulk("198.51.100.61", hop);
+    expect(other.status).toBe(400);
+    expect(other.headers["ratelimit-remaining"]).toBe(String(BULK_LIMIT - 1));
+  });
+
+  test("the same X-Real-IP shares one bucket whatever X-Forwarded-For says", async () => {
+    for (let i = 0; i < BULK_LIMIT; i++) {
+      const res = await prodBulk("198.51.100.62", `203.0.113.${i + 1}`);
+      expect(res.status).toBe(400);
+      expect(res.headers["ratelimit-remaining"]).toBe(String(BULK_LIMIT - 1 - i));
+    }
+    expect429(await prodBulk("198.51.100.62", "203.0.113.200"), BULK_LIMIT, BULK_MESSAGE);
+  });
+
+  test("the scan limiter keys on X-Real-IP too", async () => {
+    const first = await prodScan("198.51.100.63", "203.0.113.1");
+    expect(first.headers["ratelimit-remaining"]).toBe(String(SCAN_LIMIT - 1));
+    const second = await prodScan("198.51.100.63", "203.0.113.2");
+    expect(second.headers["ratelimit-remaining"]).toBe(String(SCAN_LIMIT - 2));
+  });
+
+  test.each([
+    ["missing",   undefined,                       "198.51.100.80", "198.51.100.90"],
+    ["empty",     "",                              "198.51.100.81", "198.51.100.91"],
+    ["not an IP", "not-an-ip",                     "198.51.100.82", "198.51.100.92"],
+    ["a list",    "198.51.100.70, 198.51.100.71",  "198.51.100.83", "198.51.100.93"],
+  ])("falls back to req.ip when X-Real-IP is %s", async (_label, bad, ip, otherIp) => {
+    // Exhaust req.ip's bucket through the fallback path, then show a valid
+    // X-Real-IP equal to req.ip lands in that same bucket.
+    await exhaust(x => prodBulk(bad, x), ip, BULK_LIMIT);
+    expect429(await prodBulk(bad, ip), BULK_LIMIT, BULK_MESSAGE);
+    expect429(await prodBulk(ip, "10.0.0.2"), BULK_LIMIT, BULK_MESSAGE);
+
+    // Bad headers do not all share one bucket: another req.ip starts fresh.
+    const other = await prodBulk(bad, otherIp);
+    expect(other.status).toBe(400);
+    expect(other.headers["ratelimit-remaining"]).toBe(String(BULK_LIMIT - 1));
+  });
+});
+
+describe("outside production X-Real-IP is ignored", () => {
+  test("different X-Real-IP values from one req.ip share its bucket", async () => {
+    for (let i = 0; i < BULK_LIMIT; i++) {
+      const res = await request(app).get("/api/scan/bulk")
+        .set("X-Forwarded-For", "198.51.100.95").set("X-Real-IP", `203.0.113.${i + 1}`);
+      expect(res.headers["ratelimit-remaining"]).toBe(String(BULK_LIMIT - 1 - i));
+    }
+    const res = await request(app).get("/api/scan/bulk")
+      .set("X-Forwarded-For", "198.51.100.95").set("X-Real-IP", "203.0.113.200");
+    expect429(res, BULK_LIMIT, BULK_MESSAGE);
+  });
+});
+
 describe("unlimited routes", () => {
   test("/api/health is not rate limited (deploy verification polls it)", async () => {
     const res = await request(app).get("/api/health").set("X-Forwarded-For", "198.51.100.50");

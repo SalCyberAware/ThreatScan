@@ -3,10 +3,11 @@
 // dotenv 17 sent it to stdout with a rotating tip). Log collectors and the test
 // suite read this process's output; keep it clean.
 require("dotenv").config({ quiet: true });
+const net       = require("node:net");
 const express   = require("express");
 const cors      = require("cors");
 const helmet    = require("helmet");
-const rateLimit = require("express-rate-limit");
+const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
 const { detectType } = require("./utils/detect");
 const { withTimeout } = require("./utils/upstream");
 
@@ -162,14 +163,26 @@ app.use(cors({
 
 app.use(express.json({ limit: "10kb" }));
 
+// Which client a request counts against. On Railway, req.ip under trust proxy
+// 1 is an internal hop shared by every visitor, so production keys on
+// X-Real-IP, which Railway's edge always sets and overwrites with the
+// connecting address. A missing or non-IP value falls back to req.ip rather
+// than becoming its own bucket. ipKeyGenerator groups IPv6 by /56 so one host
+// cannot rotate through its own subnet. Outside production there is no edge to
+// trust, so X-Real-IP is ignored.
+function clientKey(req) {
+  const realIp = IS_PRODUCTION ? req.get("x-real-ip") : undefined;
+  return ipKeyGenerator(realIp && net.isIP(realIp) ? realIp : req.ip);
+}
+
 const scanRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000, max: 60,
+  windowMs: 15 * 60 * 1000, max: 60, keyGenerator: clientKey,
   message: { error: "Too many requests — please try again in 15 minutes." },
   standardHeaders: true, legacyHeaders: false,
 });
 
 const bulkRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000, max: 10,
+  windowMs: 15 * 60 * 1000, max: 10, keyGenerator: clientKey,
   message: { error: "Too many bulk scan requests — please try again in 15 minutes." },
   standardHeaders: true, legacyHeaders: false,
 });
@@ -479,6 +492,9 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   if (err?.type === "entity.parse.failed") {
     return res.status(400).json({ error: "Malformed JSON in request body." });
+  }
+  if (err?.type === "entity.too.large") {
+    return res.status(413).json({ error: "Request body too large." });
   }
   console.error("Unhandled request error:", err instanceof Error ? err.message : String(err));
   if (res.headersSent) return res.end();
