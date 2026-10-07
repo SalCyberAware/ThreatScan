@@ -519,29 +519,26 @@ describe("GET /api/scan/bulk, undetectable input", () => {
   });
 });
 
-describe("CORS origin rejection", () => {
-  // Note: allowedOrigins is computed at module load (server.js:118), so setting
-  // FRONTEND_URL here has no effect. The default allowlist is ["http://localhost:5173"],
-  // so any other Origin combined with NODE_ENV=production triggers the rejection branch.
-  const savedNodeEnv = process.env.NODE_ENV;
-  let errorSpy;
+// Production CORS (FRONTEND_URL only, 403 otherwise) is read at module load, so
+// it is covered in cors.test.js, which loads server.js with that env. This
+// suite runs outside production, where any origin is reflected.
+describe("CORS on the SSE routes (outside production)", () => {
+  beforeEach(() => { cache.clear(); resetEngines(); });
 
-  beforeEach(() => {
-    errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    if (savedNodeEnv === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = savedNodeEnv;
-    errorSpy.mockRestore();
-  });
-
-  test("disallowed Origin in production is rejected by the cors middleware (500)", async () => {
-    process.env.NODE_ENV = "production";
+  // Both routes used to overwrite the cors header by hand with a fixed origin,
+  // so a request from any other origin was answered for the wrong one.
+  test("/api/scan/stream answers for the requesting origin", async () => {
     const res = await request(app)
-      .get("/api/health")
-      .set("Origin", "https://evil.example.com");
-    expect(res.status).toBe(500);
+      .get("/api/scan/stream?query=example.com")
+      .set("Origin", "http://localhost:3000");
+    expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:3000");
+  });
+
+  test("/api/scan/bulk answers for the requesting origin", async () => {
+    const res = await request(app)
+      .get("/api/scan/bulk?queries=example.com")
+      .set("Origin", "http://localhost:3000");
+    expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:3000");
   });
 });
 
@@ -635,27 +632,63 @@ describe("error handler", () => {
   // Express 5 routes rejected promises from async handlers here. The response
   // must be scrubbed JSON, not Express's default stack-trace page.
   let errorSpy;
-  const savedNodeEnv = process.env.NODE_ENV;
 
   beforeEach(() => {
+    cache.clear();
+    resetEngines();
     errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
-    if (savedNodeEnv === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = savedNodeEnv;
+    cache.clear();
     errorSpy.mockRestore();
   });
 
+  // A BigInt in an engine result makes res.json() throw inside the handler,
+  // which is a genuine handler fault that Express forwards here.
+  async function triggerHandlerFault() {
+    engines.whois.scanDomain.mockResolvedValue({ verdict: "info", size: 1n });
+    return request(app).post("/api/scan").send({ query: "example.com" });
+  }
+
   test("renders a JSON error body rather than Express's HTML stack page", async () => {
-    process.env.NODE_ENV = "production";
-    const res = await request(app)
-      .get("/api/health")
-      .set("Origin", "https://evil.example.com");
+    const res = await triggerHandlerFault();
     expect(res.status).toBe(500);
     expect(res.headers["content-type"]).toMatch(/application\/json/);
     expect(typeof res.body.error).toBe("string");
     expect(res.text).not.toMatch(/<!DOCTYPE html>|at Layer/);
+  });
+
+  test("logs only the error message, never the error object", async () => {
+    await triggerHandlerFault();
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const args = errorSpy.mock.calls[0];
+    expect(args).toHaveLength(2);
+    expect(typeof args[1]).toBe("string");
+    expect(args[1]).toMatch(/BigInt/);
+    expect(args.join(" ")).not.toMatch(/\n\s+at /);
+  });
+
+  test("malformed JSON gets a generic 400 that does not echo the body", async () => {
+    const res = await request(app)
+      .post("/api/scan")
+      .set("Content-Type", "application/json")
+      .send('{"query": "secret-looking-input');
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "Malformed JSON in request body." });
+    expect(res.text).not.toMatch(/secret-looking-input/);
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["GET",  "/api/does-not-exist"],
+    ["POST", "/api/health"],
+    ["GET",  "/"],
+  ])("%s %s returns a JSON 404", async (method, path) => {
+    const res = await request(app)[method.toLowerCase()](path);
+    expect(res.status).toBe(404);
+    expect(res.headers["content-type"]).toMatch(/application\/json/);
+    expect(res.body).toEqual({ error: "Not found." });
   });
 });
 

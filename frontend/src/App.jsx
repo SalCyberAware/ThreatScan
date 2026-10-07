@@ -887,7 +887,7 @@ export default function App() {
                   ["🔍 What is ThreatScan?","An open-source, multi-engine threat intelligence platform. Simultaneously queries 10 free and open threat intelligence APIs and streams results live as each engine responds."],
                   ["📁 File Scanning","Drop any file onto the scan page — ThreatScan hashes it locally using SHA256 (the file never leaves your device) and scans the hash across all engines."],
                   ["⚡ Bulk Scanning","Paste up to 20 URLs, IPs, domains, or hashes and scan them all at once. Results stream in live and can be exported as CSV."],
-                  ["🔒 Privacy & Security","API keys are stored server-side in environment variables. ThreatScan logs nothing and has no database. Files are never uploaded — only their hash is scanned."],
+                  ["🔒 Privacy & Security","API keys are stored server-side in environment variables. ThreatScan has no database, but it is not log-free: the backend logs error messages, the hosting platforms keep request logs that include the scanned indicator, and each query is sent to the third-party threat intelligence providers shown on the scan page. Files are never uploaded; only their hash is scanned."],
                   ["📦 Contributing","Open source under MIT license. Add new engines by creating a file in backend/engines/ and registering it in server.js."],
                 ].map(([title, body]) => (
                   <div key={title} style={{ background:"var(--surface)", border:"1px solid var(--border2)", borderRadius:8, padding:20 }}>
