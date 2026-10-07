@@ -280,6 +280,17 @@ describe("tab navigation", () => {
     expect(screen.getByText("12/70")).toBeInTheDocument();
   });
 
+  it("describes logging honestly on the About tab", () => {
+    render(<App />);
+    fireEvent.click(tab("about"));
+    const privacy = screen.getByText("🔒 Privacy & Security").nextSibling.textContent;
+    expect(privacy).not.toMatch(/logs nothing/i);
+    expect(privacy).toMatch(/no database/i);
+    expect(privacy).toMatch(/logs error messages/i);
+    expect(privacy).toMatch(/request logs/i);
+    expect(privacy).toMatch(/third-party/i);
+  });
+
   it("marks the active tab", () => {
     render(<App />);
     fireEvent.click(tab("bulk"));

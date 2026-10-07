@@ -135,18 +135,28 @@ const PORT = process.env.PORT || 4000;
 
 app.use(helmet());
 
-const allowedOrigins = process.env.FRONTEND_URL
-  ? [process.env.FRONTEND_URL]
-  : ["http://localhost:5173"];
+// CORS fails closed in production: the one allowed origin is FRONTEND_URL, and
+// without it the process refuses to start rather than guessing. Outside
+// production any origin is reflected so the Vite dev server works on any port.
+// Read once at load; both are fixed for the life of a deployed process.
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const FRONTEND_URL  = (process.env.FRONTEND_URL || "").replace(/\/+$/, "");
+
+if (IS_PRODUCTION && !FRONTEND_URL) {
+  throw new Error("FRONTEND_URL must be set when NODE_ENV=production (the frontend origin allowed by CORS).");
+}
+
+// A foreign Origin gets a plain 403 before cors runs. Handing cors an Error
+// instead sends it to the error handler as a 500, which reads as a server
+// fault. Requests with no Origin (curl, health checks, same-origin GETs) pass.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (!IS_PRODUCTION || !origin || origin === FRONTEND_URL) return next();
+  res.status(403).json({ error: "Origin not allowed." });
+});
 
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin) || process.env.NODE_ENV !== "production") {
-      return callback(null, true);
-    }
-    return callback(new Error("CORS: origin not allowed"));
-  },
+  origin: IS_PRODUCTION ? FRONTEND_URL : true,
   methods: ["GET", "POST"],
 }));
 
@@ -199,7 +209,6 @@ app.get("/api/scan/stream", scanRateLimit, async (req, res) => {
   res.setHeader("Content-Type",  "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection",    "keep-alive");
-  res.setHeader("Access-Control-Allow-Origin", allowedOrigins[0] || "*");
   res.flushHeaders();
 
   const send = (event, data) => {
@@ -306,7 +315,6 @@ app.get("/api/scan/bulk", bulkRateLimit, async (req, res) => {
   res.setHeader("Content-Type",  "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection",    "keep-alive");
-  res.setHeader("Access-Control-Allow-Origin", allowedOrigins[0] || "*");
   res.flushHeaders();
 
   const send = (event, data) => {
@@ -456,9 +464,23 @@ app.post("/api/scan", scanRateLimit, async (req, res) => {
 // run, the response is a text/event-stream and a JSON error body cannot be
 // written into it. Closing the stream is what the frontend already handles --
 // EventSource.onerror surfaces "Connection error" and closes (App.jsx:534).
+//
+// Only err.message is logged. The whole object can carry a stack, request
+// config or upstream response, none of which belongs in the host's log.
+// Malformed JSON is the client's fault: a generic 400, not logged, because
+// V8's JSON.parse message quotes the raw body back.
+
+// Anything no route matched, including unknown /api paths.
+app.use((req, res) => {
+  res.status(404).json({ error: "Not found." });
+});
+
 // eslint-disable-next-line no-unused-vars -- Express needs the 4-arg signature
 app.use((err, req, res, next) => {
-  console.error("Unhandled request error:", err);
+  if (err?.type === "entity.parse.failed") {
+    return res.status(400).json({ error: "Malformed JSON in request body." });
+  }
+  console.error("Unhandled request error:", err instanceof Error ? err.message : String(err));
   if (res.headersSent) return res.end();
   res.status(500).json({ error: safeError(err) });
 });

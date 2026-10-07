@@ -34,7 +34,7 @@ Scan URLs, IPs, file hashes & domains across **11 live security engines** simult
 
 ThreatScan is a free, open-source alternative to VirusTotal. Instead of sending your data to a single engine, ThreatScan queries **11 threat intelligence APIs simultaneously** and streams results live — engine by engine — so you see data immediately without waiting for all engines to finish.
 
-**Privacy-first:** API keys are stored server-side. ThreatScan logs nothing and has no database. Files are never uploaded — only their SHA256 hash is scanned.
+**Privacy:** API keys are stored server-side. ThreatScan has no database; scan results are held in memory for five minutes and then dropped. It is not log-free, though: the backend logs error messages, and the hosting platforms (Railway and Vercel) keep their own request logs, which include the indicator you scanned because it travels in the request URL. Each query is also sent to the third-party providers listed under [Engines](#engines). Files are never uploaded; only their SHA256 hash is scanned.
 
 ---
 
@@ -151,6 +151,7 @@ All keys are free. Get them here:
 3. Select `ThreatScan` → set **Root Directory** to `backend`
 4. Add all API keys as environment variables
 5. Set `PORT=4000`
+6. Set `NODE_ENV=production` and `FRONTEND_URL` to your frontend's origin, for example `FRONTEND_URL=https://your-app.vercel.app` (scheme and host, no path). In production the backend refuses to start without `FRONTEND_URL`, and answers any other browser origin with 403.
 
 ### Frontend → Vercel
 
@@ -158,6 +159,8 @@ All keys are free. Get them here:
 2. Set **Root Directory** to `frontend`
 3. Add environment variable: `VITE_API_URL=https://your-railway-url.up.railway.app/api`
 4. Deploy
+
+`frontend/vercel.json` sets the security headers. Its Content-Security-Policy is in Report-Only mode and names the Railway API origin in `connect-src`; if your backend URL differs, change it there too, or the browser console will report every scan request.
 
 ---
 
@@ -213,7 +216,7 @@ module.exports = { scanUrl, scanIp, scanHash, scanDomain };
 - **Frontend:** React, Vite, Server-Sent Events
 - **Backend:** Node.js, Express
 - **Deployment:** Vercel (frontend), Railway (backend)
-- **Security:** Helmet.js, CORS, rate limiting, no logging
+- **Security:** Helmet.js, fail-closed CORS allowlist, rate limiting, security headers on the frontend (`frontend/vercel.json`)
 
 ---
 
