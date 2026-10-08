@@ -54,7 +54,7 @@ See the [README](README.md#api-keys) for direct links to each provider's signup 
 ## Running Locally
 
 ```bash
-# Terminal 1 — backend (auto-reloads via nodemon)
+# Terminal 1: backend (auto-reloads via node --watch)
 cd backend && npm run dev
 
 # Terminal 2 — frontend (Vite dev server on http://localhost:5173)
