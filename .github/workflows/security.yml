@@ -50,7 +50,7 @@ jobs:
 
       # Why --omit=dev:
       #
-      # The dev tree here is jest, nodemon, and supertest. They run on a CI
+      # The dev tree here is jest and supertest. They run on a CI
       # runner and on a developer's laptop, never in the deployed process, so an
       # advisory against one of them is not a vulnerability in the running
       # service. The production tree is the opposite case and is not filtered:
