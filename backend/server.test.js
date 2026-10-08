@@ -200,6 +200,12 @@ describe("GET /api/health", () => {
     expect(typeof res.body.cacheSize).toBe("number");
   });
 
+  test("reports the Node major version only", async () => {
+    const res = await request(app).get("/api/health");
+    expect(res.body.node).toBe(process.versions.node.split(".")[0]);
+    expect(res.body.node).toMatch(/^\d+$/);
+  });
+
   test("per-engine status reflects API key presence", async () => {
     process.env.VT_API_KEY = "set";
     delete process.env.ABUSEIPDB_KEY;
@@ -260,10 +266,10 @@ describe("GET /api/health", () => {
     });
 
     test("existing health fields survive alongside commit", async () => {
-      // The uptime monitor reads these — adding commit must stay additive.
+      // The uptime monitor reads these, so adding commit and node must stay additive.
       const res = await request(app).get("/api/health");
       expect(Object.keys(res.body).sort())
-        .toEqual(["cacheSize", "commit", "engines", "status", "uptime"]);
+        .toEqual(["cacheSize", "commit", "engines", "node", "status", "uptime"]);
     });
   });
 });

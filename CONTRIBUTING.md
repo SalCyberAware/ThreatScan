@@ -4,7 +4,7 @@ ThreatScan is a free, open-source threat-intelligence aggregator that scans URLs
 
 ## Prerequisites
 
-- **Node.js 20+** and **npm**
+- **Node.js 24** and **npm** (the backend pins `engines.node` to `24.x`, which Railway builds on)
 - A handful of free API keys for the engines you want to exercise locally (see [API Keys](#api-keys))
 
 ## Setup

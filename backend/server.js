@@ -195,6 +195,8 @@ const bulkRateLimit = rateLimit({
 const buildCommit = () =>
   process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || "unknown";
 
+const nodeMajor = process.versions.node.split(".")[0];
+
 app.get("/api/health", (req, res) => {
   const status = {};
   for (const [id, keyName] of Object.entries(ENGINE_KEYS)) {
@@ -202,8 +204,10 @@ app.get("/api/health", (req, res) => {
                : process.env[keyName] ? "active" : "inactive (no key set)";
   }
   // `commit` lets a post-deploy check prove the running build is the commit
-  // that was just pushed. See PromptShield docs/AUTOMATION_PLAN.md.
-  res.json({ status:"ok", commit:buildCommit(), engines:status, uptime:process.uptime(), cacheSize:cache.size });
+  // that was just pushed. See PromptShield docs/AUTOMATION_PLAN.md. `node` is
+  // the major version only, enough to prove which runtime engines.node gave
+  // the deployed process without naming its exact patch release.
+  res.json({ status:"ok", commit:buildCommit(), node:nodeMajor, engines:status, uptime:process.uptime(), cacheSize:cache.size });
 });
 
 // ── SSE Streaming Scan Endpoint ───────────────────────────────────────────────

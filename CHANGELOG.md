@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Changed
+
+- **The backend runs on Node 24.** `backend/package.json` pins `engines.node` to `24.x`, so Railway builds and runs on 24, and the backend CI and npm audit jobs moved from Node 20 to 24. `GET /api/health` now reports the running Node major version as `node`, so a deploy can be checked against the pin.
+
 ## [1.0.0] - 2026-05-27
 
 Initial public release.
