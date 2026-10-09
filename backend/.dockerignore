@@ -1,0 +1,14 @@
+# An allowlist: everything is excluded and only what the server needs at
+# runtime is let back in. server.js requires every engine and util at startup,
+# so a file missing here fails the CI smoke test instead of a live request.
+*
+!package.json
+!package-lock.json
+!server.js
+!engines/
+!utils/
+
+# Never in the image, even inside an allowed folder.
+**/.env
+**/.env.*
+**/*.test.js
