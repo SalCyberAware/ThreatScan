@@ -62,6 +62,26 @@ updates:
         applies-to: security-updates
         patterns: ["*"]
 
+  # ── Backend Docker base image (backend/Dockerfile) ────────────────────────
+  # The base image is pinned by digest, which goes stale silently as Debian
+  # and Node ship security fixes. This proposes the new digest for the same
+  # tag. The Node major is held: moving off 24 is a planned change, made
+  # together with engines.node, not a bot bump.
+  - package-ecosystem: "docker"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 1
+    labels: ["dependencies", "backend"]
+    commit-message:
+      prefix: "build(deps)"
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+
   # ── Frontend (npm, React + Vite) ──────────────────────────────────────────
   - package-ecosystem: "npm"
     directory: "/frontend"

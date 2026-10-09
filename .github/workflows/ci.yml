@@ -50,6 +50,58 @@ jobs:
         run: node --check server.js
         working-directory: backend
 
+  # Builds backend/Dockerfile, the image Railway deploys, and proves it starts
+  # and answers /api/health. No API keys are passed: the health endpoint only
+  # reads which key names are set, so this makes no upstream call.
+  container:
+    name: Backend container (build + smoke test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # A decoy .env proves .dockerignore keeps env files out of the image.
+      - name: Plant a decoy .env
+        run: echo "DECOY=1" > backend/.env
+
+      - name: Build the image
+        run: docker build --pull -t threatscan-backend:ci backend
+
+      - name: Image runs as non-root and holds no env file or tests
+        run: |
+          uid=$(docker run --rm --entrypoint id threatscan-backend:ci -u)
+          test "$uid" != "0" || { echo "image runs as root"; exit 1; }
+          docker run --rm --entrypoint sh threatscan-backend:ci -c \
+            'test ! -e /app/.env && test -z "$(find /app -name "*.test.js" -not -path "*/node_modules/*")"'
+
+      # PORT=8080 rather than the default, to prove the container listens on
+      # whatever port the platform hands it. FRONTEND_URL is a placeholder
+      # origin; production mode refuses to start without one. The commit goes in
+      # RAILWAY_GIT_COMMIT_SHA, the variable /api/health reads first in production.
+      - name: Start the container and check /api/health
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          docker run -d --name api -p 8080:8080 \
+            -e PORT=8080 -e FRONTEND_URL=https://example.com \
+            -e RAILWAY_GIT_COMMIT_SHA="$EXPECTED_SHA" threatscan-backend:ci
+          for i in $(seq 1 30); do
+            curl -fsS -o health.json http://127.0.0.1:8080/api/health && break
+            sleep 2
+          done
+          test -s health.json || { echo "no healthy answer in 60s"; exit 1; }
+          node -e '
+            const h = require("./health.json");
+            const fail = (m) => { console.error(m); process.exit(1); };
+            if (h.status !== "ok") fail("status " + h.status);
+            if (h.commit !== process.env.EXPECTED_SHA) fail("commit " + h.commit);
+            if (h.node !== "24") fail("node " + h.node);
+            console.log("health ok:", { commit: h.commit, node: h.node });
+          '
+
+      - name: Container logs
+        if: always()
+        run: docker logs api || true
+
   frontend:
     name: Frontend (lint + build + tests)
     runs-on: ubuntu-latest

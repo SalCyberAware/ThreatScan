@@ -153,6 +153,20 @@ All keys are free. Get them here:
 5. Set `PORT=4000`
 6. Set `NODE_ENV=production` and `FRONTEND_URL` to your frontend's origin, for example `FRONTEND_URL=https://your-app.vercel.app` (scheme and host, no path). In production the backend refuses to start without `FRONTEND_URL`, and answers any other browser origin with 403.
 
+Railway builds `backend/Dockerfile`. Leave the service's **Custom Start Command** empty: the image already runs `node server.js`, and a custom command would replace it.
+
+### Backend → Docker (any host)
+
+The same image runs anywhere Docker does. It runs as an unprivileged user, defaults to `NODE_ENV=production`, and listens on `PORT` (4000 if unset):
+
+```bash
+docker build -t threatscan-backend backend
+docker run -p 4000:4000 --env-file backend/.env \
+  -e FRONTEND_URL=https://your-app.example threatscan-backend
+```
+
+API keys are read at runtime from the environment. None is baked into the image, and `.dockerignore` keeps `.env` files out of the build.
+
 ### Frontend → Vercel
 
 1. Go to [vercel.com](https://vercel.com) → New Project → Import from GitHub
