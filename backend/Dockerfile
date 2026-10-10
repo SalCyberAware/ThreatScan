@@ -8,7 +8,13 @@
 # Base: the official Node 24 slim image, pinned by digest so a rebuild cannot
 # pick up a different image. Dependabot's docker entry proposes digest updates;
 # the 24 major stays fixed to match engines.node in package.json.
-FROM node:24-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66
+#
+# Pulled from Amazon's public mirror of Docker Hub's official images
+# (public.ecr.aws/docker/library) rather than Docker Hub itself: Docker Hub
+# refuses anonymous pulls from shared builders such as Railway's and GitHub's
+# runners. The digest is the same image index Docker Hub serves, so the mirror
+# can only supply that exact image or the build fails.
+FROM public.ecr.aws/docker/library/node:24-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66
 
 # Production is the default, so CORS fails closed and FRONTEND_URL is required.
 # A Railway service variable of the same name still wins at runtime.

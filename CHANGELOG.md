@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ### Changed
 
-- **The backend builds from a Dockerfile.** `backend/Dockerfile` uses the official Node 24 slim image pinned by digest, installs only runtime dependencies from the lockfile, runs as an unprivileged user and starts `node server.js`. Railway builds it, and anyone can run the same image themselves. A new CI job builds the image and checks that it runs as non-root, holds no `.env` or tests, and answers `/api/health` with the right commit and Node major. Dependabot proposes base image digest updates weekly. Roadmap P1 #15.
+- **The backend builds from a Dockerfile.** `backend/Dockerfile` uses the official Node 24 slim image pinned by digest, pulled from Amazon's public mirror of Docker Hub's official images (`public.ecr.aws/docker/library`) because Docker Hub refuses anonymous pulls from shared builders, installs only runtime dependencies from the lockfile, runs as an unprivileged user and starts `node server.js`. Railway builds it, and anyone can run the same image themselves. A new CI job builds the image and checks that it runs as non-root, holds no `.env` or tests, and answers `/api/health` with the right commit and Node major. Dependabot proposes base image digest updates weekly. Roadmap P1 #15.
 - **The backend runs on Node 24.** `backend/package.json` pins `engines.node` to `24.x`, so Railway builds and runs on 24, and the backend CI and npm audit jobs moved from Node 20 to 24. `GET /api/health` now reports the running Node major version as `node`, so a deploy can be checked against the pin.
 
 ## [1.0.0] - 2026-05-27
