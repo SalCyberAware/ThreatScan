@@ -38,11 +38,13 @@ jobs:
         working-directory: backend
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node
         # Node 24 to match the backend job in ci.yml and engines.node.
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
           cache: "npm"
@@ -79,11 +81,13 @@ jobs:
         working-directory: frontend
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node
         # Node 24 to match the frontend job in ci.yml.
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
           cache: "npm"
@@ -120,8 +124,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository with full history
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           # A secret that was committed and later deleted is still in the
           # history and still compromised. The default shallow clone would scan
           # only the tip and report a clean repo either way.
@@ -154,16 +159,20 @@ jobs:
   codeql:
     name: CodeQL (javascript-typescript)
     runs-on: ubuntu-latest
+    # The only job in this repo with a scope beyond the workflow's read-only
+    # default.
     permissions:
-      contents: read
-      security-events: write
-      actions: read
+      contents: read # check out the code to analyze
+      security-events: write # upload the analysis results to the Security tab
+      actions: read # read this workflow run's details for the upload
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           languages: javascript-typescript
 
@@ -176,6 +185,6 @@ jobs:
       # not fail the workflow on them by design. Triage the Security tab weekly;
       # do not read this checkmark as an all-clear.
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           category: "/language:javascript-typescript"
