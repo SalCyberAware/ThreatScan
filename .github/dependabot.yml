@@ -67,6 +67,12 @@ updates:
   # and Node ship security fixes. This proposes the new digest for the same
   # tag. The Node major is held: moving off 24 is a planned change, made
   # together with engines.node, not a bot bump.
+  #
+  # The image comes from public.ecr.aws/docker/library, Amazon's public mirror
+  # of Docker Hub's official images. Dependabot reads that registry from the
+  # FROM line and lists its tags anonymously; no registry credentials are
+  # needed. It names the dependency by its path there (docker/library/node),
+  # so the ignore rule matches any name ending in "node".
   - package-ecosystem: "docker"
     directory: "/backend"
     schedule:
@@ -79,7 +85,7 @@ updates:
     commit-message:
       prefix: "build(deps)"
     ignore:
-      - dependency-name: "node"
+      - dependency-name: "*node"
         update-types: ["version-update:semver-major"]
 
   # ── Frontend (npm, React + Vite) ──────────────────────────────────────────
