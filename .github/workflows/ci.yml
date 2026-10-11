@@ -107,8 +107,9 @@ jobs:
 
       # docker stop sends SIGTERM to node as PID 1, the same signal Railway
       # sends the old deployment, then SIGKILL after 15 seconds, matching the
-      # service's RAILWAY_DEPLOYMENT_DRAINING_SECONDS. Exit code 0 means the
-      # handler ran and closed the server; a SIGKILL would show 137.
+      # Draining time in the service's Railway Teardown setting
+      # (Settings > Deploy > Teardown). Exit code 0 means the handler ran and
+      # closed the server; a SIGKILL would show 137.
       - name: SIGTERM shuts the container down cleanly
         run: |
           start=$(date +%s)
