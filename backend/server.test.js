@@ -378,6 +378,24 @@ describe("GET /api/scan/stream — event sequence", () => {
   });
 });
 
+describe("GET /api/scan/stream: global scan timer", () => {
+  test("a scan that finishes first clears its 30 second timer", async () => {
+    const setSpy = jest.spyOn(global, "setTimeout");
+    const clearSpy = jest.spyOn(global, "clearTimeout");
+    try {
+      const res = await request(app).get("/api/scan/stream").query({ query: "https://example.com" });
+      expect(parseSSE(res.text).at(-1).event).toBe("done");
+
+      const index = setSpy.mock.calls.findIndex(call => call[1] === 30000);
+      expect(index).toBeGreaterThanOrEqual(0);
+      expect(clearSpy).toHaveBeenCalledWith(setSpy.mock.results[index].value);
+    } finally {
+      setSpy.mockRestore();
+      clearSpy.mockRestore();
+    }
+  });
+});
+
 describe("GET /api/scan/stream — cache replay", () => {
   test("second identical request replays from cache without re-calling engines", async () => {
     await request(app).get("/api/scan/stream").query({ query: "https://example.com" });

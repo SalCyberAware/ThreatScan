@@ -105,6 +105,21 @@ jobs:
             console.log("health ok:", { commit: h.commit, node: h.node });
           '
 
+      # docker stop sends SIGTERM to node as PID 1, the same signal Railway
+      # sends the old deployment, then SIGKILL after 15 seconds, matching the
+      # service's RAILWAY_DEPLOYMENT_DRAINING_SECONDS. Exit code 0 means the
+      # handler ran and closed the server; a SIGKILL would show 137.
+      - name: SIGTERM shuts the container down cleanly
+        run: |
+          start=$(date +%s)
+          docker stop --time 15 api
+          elapsed=$(( $(date +%s) - start ))
+          code=$(docker inspect --format '{{.State.ExitCode}}' api)
+          docker logs api 2>&1 | grep -q "SIGTERM received: shutdown started" \
+            || { echo "no shutdown line in the container log"; exit 1; }
+          test "$code" = "0" || { echo "container exited with $code after ${elapsed}s"; exit 1; }
+          echo "clean exit 0 after ${elapsed}s"
+
       - name: Container logs
         if: always()
         run: docker logs api || true

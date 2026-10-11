@@ -36,8 +36,8 @@ USER node
 
 # server.js reads PORT itself and falls back to 4000. node directly rather
 # than npm start, so the platform's stop signal is sent to node itself. As
-# PID 1, node ignores SIGTERM until the app installs a handler, which server.js
-# does not yet, so a stop ends with the platform's SIGKILL after its timeout.
+# PID 1, node ignores SIGTERM unless the app installs a handler; server.js
+# installs one (utils/shutdown.js) that lets open requests finish, then exits.
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 4000) + '/api/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]

@@ -10,6 +10,7 @@ const helmet    = require("helmet");
 const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
 const { detectType } = require("./utils/detect");
 const { withTimeout } = require("./utils/upstream");
+const { installShutdownHandlers, parseShutdownTimeout } = require("./utils/shutdown");
 
 const engines = {
   virustotal:    require("./engines/virustotal"),
@@ -256,9 +257,12 @@ app.get("/api/scan/stream", scanRateLimit, async (req, res) => {
 
   const allResults = [];
 
-  const globalTimeout = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error("Global scan timeout")), GLOBAL_SCAN_TIMEOUT)
-  );
+  // The timer is cleared in finally, so a scan that finishes first does not
+  // leave a 30 second timer behind.
+  let globalTimer;
+  const globalTimeout = new Promise((_, reject) => {
+    globalTimer = setTimeout(() => reject(new Error("Global scan timeout")), GLOBAL_SCAN_TIMEOUT);
+  });
 
   try {
     await Promise.race([
@@ -288,6 +292,8 @@ app.get("/api/scan/stream", scanRateLimit, async (req, res) => {
   } catch {
     if (!clientDisconnected)
       send("engine", { id:"_timeout", verdict:"info", detail:"Some engines timed out" });
+  } finally {
+    clearTimeout(globalTimer);
   }
 
   if (clientDisconnected) return res.end();
@@ -506,9 +512,12 @@ app.use((err, req, res, next) => {
 });
 
 if (require.main === module) {
-  app.listen(PORT, () =>
+  const server = app.listen(PORT, () =>
     console.log(`✅ ThreatScan backend running on http://localhost:${PORT}`)
   );
+  installShutdownHandlers(server, {
+    timeoutMs: parseShutdownTimeout(process.env.SHUTDOWN_TIMEOUT_MS),
+  });
 }
 
 module.exports = { app, calcScore, _cache: cache };
