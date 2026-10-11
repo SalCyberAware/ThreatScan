@@ -6,9 +6,10 @@
 //
 // On the first SIGTERM or SIGINT: log once, stop accepting connections, let
 // in-flight requests and streams finish, then exit 0. If they have not finished
-// by the deadline, close what is left and exit 1. Railway waits
-// RAILWAY_DEPLOYMENT_DRAINING_SECONDS (set to 15 for this service) between
-// SIGTERM and SIGKILL, so the 10 second default leaves room to exit cleanly.
+// by the deadline, close what is left and exit 1. Railway waits the Teardown
+// Draining time between SIGTERM and SIGKILL: 15 seconds for this service, set
+// in Settings > Deploy > Teardown (the default with Teardown off is 0). The
+// 10 second default leaves room to exit cleanly.
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10000;
 const SHUTDOWN_SIGNALS = ["SIGTERM", "SIGINT"];
