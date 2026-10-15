@@ -14,7 +14,7 @@
 # refuses anonymous pulls from shared builders such as Railway's and GitHub's
 # runners. The digest is the same image index Docker Hub serves, so the mirror
 # can only supply that exact image or the build fails.
-FROM public.ecr.aws/docker/library/node:24-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66
+FROM public.ecr.aws/docker/library/node:24-trixie-slim@sha256:7f486cabe892bff8fef04c0f7da8dba84a560be3e4e2740b7a86afc57ebec315
 
 # Production is the default, so CORS fails closed and FRONTEND_URL is required.
 # A Railway service variable of the same name still wins at runtime.
