@@ -119,7 +119,7 @@ jobs:
           docker run -d --name api -p 8080:8080 \
             -e PORT=8080 -e FRONTEND_URL=https://example.com \
             -e RAILWAY_GIT_COMMIT_SHA="$EXPECTED_SHA" threatscan-backend:ci
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             curl -fsS -o health.json http://127.0.0.1:8080/api/health && break
             sleep 2
           done
