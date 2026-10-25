@@ -167,6 +167,10 @@ docker run -p 4000:4000 --env-file backend/.env \
 
 API keys are read at runtime from the environment. None is baked into the image, and `.dockerignore` keeps `.env` files out of the build.
 
+#### How CI uses the mirror
+
+CI's **Backend container (build + smoke test)** job builds this same Dockerfile, but takes the base image from `ghcr.io/salcyberaware/mirror`, a copy of the same digest that PromptShield's `mirror-base-images.yml` workflow keeps (public.ecr.aws often answers GitHub runners with 429). The job pulls `ghcr.io/salcyberaware/mirror/<name>:<tag>@<pinned digest>`, fails unless the pulled image has exactly the Dockerfile's digest, and passes `--build-context <FROM ref>=docker-image://<mirror ref>` to `docker build`. It points public.ecr.aws at 0.0.0.0 first, so a build that tried to reach it would fail. The FROM line stays literal on public.ecr.aws, so Railway, Dependabot and `.github/scripts/base-image-watch.sh` see no change. A Dependabot digest bump passes this job only once the new digest is in the mirror; if it is not, run PromptShield's **Mirror base images** workflow by hand.
+
 ### Frontend → Vercel
 
 1. Go to [vercel.com](https://vercel.com) → New Project → Import from GitHub
