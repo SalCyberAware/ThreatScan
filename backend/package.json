@@ -10,16 +10,16 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
-    "axios": "^1.7.2",
+    "axios": "^1.21.1",
     "cors": "^2.8.5",
-    "dotenv": "^18.0.7",
+    "dotenv": "^18.0.10",
     "express": "^5.3.0",
-    "express-rate-limit": "^8.7.1",
+    "express-rate-limit": "^8.7.4",
     "helmet": "^8.3.0"
   },
   "devDependencies": {
     "jest": "^30.5.2",
-    "supertest": "^7.3.1"
+    "supertest": "^7.3.2"
   },
   "engines": {
     "node": "24.x"
