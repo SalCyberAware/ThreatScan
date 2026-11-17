@@ -20,7 +20,7 @@
 # copy, after checking the digests match. Keep these FROM lines literal (no
 # ARG): Dependabot and .github/scripts/*.sh only read a literal image here.
 
-FROM public.ecr.aws/docker/library/node:24-trixie-slim@sha256:7f486cabe892bff8fef04c0f7da8dba84a560be3e4e2740b7a86afc57ebec315
+FROM public.ecr.aws/docker/library/node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0
 
 # Production is the default, so CORS fails closed and FRONTEND_URL is required.
 # A Railway service variable of the same name still wins at runtime.
